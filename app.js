@@ -103,10 +103,22 @@ async function handleLogin(event) {
 
   const user = USERS[username];
 
+  if (!user) {
+    refs.loginError.textContent = "Utilisateur inconnu (utilise anthony ou julien).";
+    refs.loginError.classList.remove("hidden");
+    return;
+  }
+
+  if (!window.APP_CONFIG || !window.APP_CONFIG.users) {
+    refs.loginError.textContent = "Config absente: verifie Pages=GitHub Actions puis redeploie.";
+    refs.loginError.classList.remove("hidden");
+    return;
+  }
+
   const expectedHash = getPasswordHashForUser(username);
 
-  if (!user || !expectedHash) {
-    refs.loginError.textContent = "Configuration utilisateur invalide.";
+  if (!expectedHash) {
+    refs.loginError.textContent = `Hash manquant pour ${username}: verifie les secrets puis redeploie.`;
     refs.loginError.classList.remove("hidden");
     return;
   }
