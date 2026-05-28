@@ -6,13 +6,11 @@ const USERS = {
   anthony: {
     username: "anthony",
     displayName: "Anthony",
-    password: "stock123",
     badgeClass: "seller-anthony"
   },
   julien: {
     username: "julien",
     displayName: "Julien",
-    password: "stock123",
     badgeClass: "seller-julien"
   }
 };
@@ -96,7 +94,7 @@ function restoreSession() {
   }
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
 
   const formData = new FormData(event.currentTarget);
@@ -105,7 +103,30 @@ function handleLogin(event) {
 
   const user = USERS[username];
 
-  if (!user || user.password !== password) {
+  const expectedHash = getPasswordHashForUser(username);
+
+  if (!user || !expectedHash) {
+    refs.loginError.textContent = "Configuration utilisateur invalide.";
+    refs.loginError.classList.remove("hidden");
+    return;
+  }
+
+  if (!isValidSha256Hex(expectedHash)) {
+    refs.loginError.textContent = "Configuration mot de passe manquante (GitHub Secrets).";
+    refs.loginError.classList.remove("hidden");
+    return;
+  }
+
+  let submittedHash = "";
+  try {
+    submittedHash = await sha256Hex(password);
+  } catch {
+    refs.loginError.textContent = "Impossible de verifier le mot de passe sur ce navigateur.";
+    refs.loginError.classList.remove("hidden");
+    return;
+  }
+
+  if (submittedHash !== expectedHash) {
     refs.loginError.textContent = "Identifiants invalides.";
     refs.loginError.classList.remove("hidden");
     return;
@@ -511,4 +532,27 @@ function isValidHttpUrl(text) {
   } catch {
     return false;
   }
+}
+
+function getPasswordHashForUser(username) {
+  const configUsers = window.APP_CONFIG && window.APP_CONFIG.users ? window.APP_CONFIG.users : {};
+  const hash = configUsers[username] && typeof configUsers[username].passwordHash === "string"
+    ? configUsers[username].passwordHash.trim().toLowerCase()
+    : "";
+  return hash;
+}
+
+function isValidSha256Hex(value) {
+  return /^[a-f0-9]{64}$/.test(value);
+}
+
+async function sha256Hex(value) {
+  if (!window.crypto || !window.crypto.subtle) {
+    throw new Error("crypto_subtle_unavailable");
+  }
+
+  const input = new TextEncoder().encode(value);
+  const digest = await window.crypto.subtle.digest("SHA-256", input);
+  const bytes = Array.from(new Uint8Array(digest));
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

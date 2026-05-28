@@ -22,12 +22,22 @@ Mini app statique pour gerer vos stocks Vinted a 2 utilisateurs.
 - Recherche, filtres et tris
 - Persistance locale via `localStorage`
 
-## Comptes par defaut
+## Utilisateurs
 
-- `anthony` / `stock123`
-- `julien` / `stock123`
+- `anthony`
+- `julien`
+
+Les mots de passe ne sont plus stockes en dur dans le code. Ils sont injectes via GitHub Secrets pendant le deploiement.
 
 ## Lancer en local
+
+Avant de tester en local, renseigner les hash dans `config.js`.
+
+Exemple pour generer un hash SHA-256:
+
+```bash
+printf 'mon_mot_de_passe' | shasum -a 256
+```
 
 Option 1: ouvrir directement `index.html` dans le navigateur.
 
@@ -39,17 +49,26 @@ python3 -m http.server 8080
 
 Puis ouvrir `http://localhost:8080`.
 
+## Configuration des mots de passe (GitHub Secrets)
+
+Dans le repo GitHub, ajouter ces secrets:
+
+- `ANTHONY_PASSWORD`
+- `JULIEN_PASSWORD`
+
+Le workflow calcule automatiquement les hash SHA-256 et genere `config.js` au build.
+
 ## Deploiement GitHub Pages
 
-1. Pousser ces fichiers sur un repo GitHub.
-2. Dans GitHub: `Settings > Pages`.
-3. Source: `Deploy from a branch`.
-4. Choisir la branche (`main` par ex.) et dossier `/ (root)`.
-5. Sauvegarder, puis ouvrir l'URL fournie par GitHub Pages.
+1. Pousser ces fichiers sur un repo GitHub (branche `main`).
+2. Ajouter les secrets `ANTHONY_PASSWORD` et `JULIEN_PASSWORD`.
+3. Dans GitHub: `Settings > Pages`.
+4. Dans `Build and deployment`, choisir `Source: GitHub Actions`.
+5. Le workflow `.github/workflows/deploy-pages.yml` va deployer automatiquement.
 
 ## Important (securite)
 
-Le login est 100% cote client (front-end) et sert a separer visuellement les 2 utilisateurs.
-Ce n'est pas un systeme d'authentification securise.
+Le login reste 100% cote client (front-end) et sert a separer visuellement les 2 utilisateurs.
+Ce n'est pas un systeme d'authentification serveur.
 
 Pour une vraie securite multi-utilisateur, il faut un back-end (API + base de donnees + auth serveur).
