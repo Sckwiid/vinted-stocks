@@ -64,7 +64,7 @@ Le workflow calcule automatiquement les hash SHA-256 et genere `config.js` au bu
 2. Ajouter les secrets `ANTHONY_PASSWORD` et `JULIEN_PASSWORD`.
 3. Dans GitHub: `Settings > Pages`.
 4. Dans `Build and deployment`, choisir `Source: GitHub Actions`.
-5. Le workflow `.github/workflows/deploy-pages.yml` va deployer automatiquement.
+5. Le workflow `.github/workflows/static.yml` va deployer automatiquement.
 
 ## Important (securite)
 
