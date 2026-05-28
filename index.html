@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinted Stocks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="bg-shape bg-shape-1" aria-hidden="true"></div>
+  <div class="bg-shape bg-shape-2" aria-hidden="true"></div>
+
+  <main class="layout">
+    <section id="loginView" class="panel login-panel">
+      <h1>Vinted Stocks</h1>
+      <p class="subtitle">Connexion Anthony / Julien</p>
+      <form id="loginForm" class="stacked-form">
+        <label for="username">Utilisateur</label>
+        <input id="username" name="username" type="text" autocomplete="username" placeholder="anthony ou julien" required>
+
+        <label for="password">Mot de passe</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+        <button type="submit" class="btn btn-main">Se connecter</button>
+      </form>
+      <p id="loginError" class="message error hidden"></p>
+      <p class="hint">
+        Comptes par defaut: anthony / stock123 et julien / stock123
+      </p>
+    </section>
+
+    <section id="dashboardView" class="hidden">
+      <header class="topbar panel">
+        <div>
+          <h2>Gestion des articles</h2>
+          <p class="subtitle">Stock total, en vente, disponible, tri et filtres</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="sessionBadge" class="seller-badge"></span>
+          <button id="logoutBtn" class="btn btn-outline" type="button">Deconnexion</button>
+        </div>
+      </header>
+
+      <section class="stats-grid">
+        <article class="stat-card panel">
+          <p class="stat-label">Articles</p>
+          <p id="statProducts" class="stat-value">0</p>
+        </article>
+        <article class="stat-card panel">
+          <p class="stat-label">Stock disponible</p>
+          <p id="statAvailable" class="stat-value">0</p>
+        </article>
+        <article class="stat-card panel">
+          <p class="stat-label">Stock bas</p>
+          <p id="statLow" class="stat-value">0</p>
+        </article>
+        <article class="stat-card panel">
+          <p class="stat-label">Total en vente</p>
+          <p id="statListed" class="stat-value">0</p>
+        </article>
+      </section>
+
+      <section class="panel">
+        <h3>Ajouter un produit</h3>
+        <form id="addProductForm" class="product-form">
+          <label>
+            Nom du produit
+            <input name="name" type="text" required placeholder="Ex: Pantalon Nike vintage">
+          </label>
+          <label>
+            Stock total
+            <input name="totalStock" type="number" min="0" required value="0">
+          </label>
+          <label>
+            Quantite en vente
+            <input name="listedQuantity" type="number" min="0" value="0">
+          </label>
+          <label>
+            Mis en vente par
+            <select name="listedBy">
+              <option value="">Personne</option>
+              <option value="anthony">Anthony</option>
+              <option value="julien">Julien</option>
+            </select>
+          </label>
+          <label>
+            Seuil stock bas
+            <input name="lowThreshold" type="number" min="0" value="3">
+          </label>
+          <label>
+            Lien article Vinted
+            <input name="articleLink" type="url" placeholder="https://www.vinted.fr/...">
+          </label>
+          <label>
+            Photo (URL)
+            <input name="photoUrl" type="url" placeholder="https://...">
+          </label>
+          <label>
+            ou photo (fichier)
+            <input name="photoFile" type="file" accept="image/*">
+          </label>
+          <button type="submit" class="btn btn-main">Ajouter</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h3>Recherche, filtres et tri</h3>
+        <div class="toolbar">
+          <label>
+            Rechercher
+            <input id="searchInput" type="search" placeholder="Nom ou lien">
+          </label>
+          <label>
+            Filtre vendeur
+            <select id="sellerFilter">
+              <option value="all">Tous</option>
+              <option value="anthony">Anthony</option>
+              <option value="julien">Julien</option>
+            </select>
+          </label>
+          <label>
+            Tri
+            <select id="sortSelect">
+              <option value="updatedDesc">Recents</option>
+              <option value="nameAsc">Nom A-Z</option>
+              <option value="availableAsc">Stock dispo croissant</option>
+              <option value="availableDesc">Stock dispo decroissant</option>
+              <option value="listedDesc">En vente decroissant</option>
+            </select>
+          </label>
+          <label class="check-label">
+            <input id="lowOnly" type="checkbox">
+            Uniquement stock bas
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Articles</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Photo</th>
+                <th>Produit</th>
+                <th>Vendeur</th>
+                <th>Stock total</th>
+                <th>En vente</th>
+                <th>Stock dispo</th>
+                <th>Seuil bas</th>
+                <th>Lien</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="productsBody"></tbody>
+          </table>
+        </div>
+        <p id="emptyState" class="message hidden">Aucun produit pour ce filtre.</p>
+      </section>
+
+      <p id="statusMessage" class="message hidden"></p>
+    </section>
+  </main>
+</body>
+</html>

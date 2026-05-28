@@ -1,0 +1,514 @@
+const STORAGE_DATA_KEY = "vinted_stocks_data_v1";
+const STORAGE_SESSION_KEY = "vinted_stocks_session_v1";
+const DEFAULT_LOW_THRESHOLD = 3;
+
+const USERS = {
+  anthony: {
+    username: "anthony",
+    displayName: "Anthony",
+    password: "stock123",
+    badgeClass: "seller-anthony"
+  },
+  julien: {
+    username: "julien",
+    displayName: "Julien",
+    password: "stock123",
+    badgeClass: "seller-julien"
+  }
+};
+
+const state = {
+  products: [],
+  user: null,
+  search: "",
+  sellerFilter: "all",
+  lowOnly: false,
+  sort: "updatedDesc"
+};
+
+const refs = {
+  loginView: document.getElementById("loginView"),
+  dashboardView: document.getElementById("dashboardView"),
+  loginForm: document.getElementById("loginForm"),
+  loginError: document.getElementById("loginError"),
+  sessionBadge: document.getElementById("sessionBadge"),
+  logoutBtn: document.getElementById("logoutBtn"),
+  addProductForm: document.getElementById("addProductForm"),
+  searchInput: document.getElementById("searchInput"),
+  sellerFilter: document.getElementById("sellerFilter"),
+  lowOnly: document.getElementById("lowOnly"),
+  sortSelect: document.getElementById("sortSelect"),
+  productsBody: document.getElementById("productsBody"),
+  emptyState: document.getElementById("emptyState"),
+  statusMessage: document.getElementById("statusMessage"),
+  statProducts: document.getElementById("statProducts"),
+  statAvailable: document.getElementById("statAvailable"),
+  statLow: document.getElementById("statLow"),
+  statListed: document.getElementById("statListed")
+};
+
+init();
+
+function init() {
+  state.products = loadProducts();
+  bindEvents();
+  restoreSession();
+  render();
+}
+
+function bindEvents() {
+  refs.loginForm.addEventListener("submit", handleLogin);
+  refs.logoutBtn.addEventListener("click", handleLogout);
+  refs.addProductForm.addEventListener("submit", handleAddProduct);
+
+  refs.searchInput.addEventListener("input", (event) => {
+    state.search = event.target.value.trim().toLowerCase();
+    renderTable();
+  });
+
+  refs.sellerFilter.addEventListener("change", (event) => {
+    state.sellerFilter = event.target.value;
+    renderTable();
+  });
+
+  refs.lowOnly.addEventListener("change", (event) => {
+    state.lowOnly = event.target.checked;
+    renderTable();
+  });
+
+  refs.sortSelect.addEventListener("change", (event) => {
+    state.sort = event.target.value;
+    renderTable();
+  });
+
+  refs.productsBody.addEventListener("submit", handleTableSubmit);
+  refs.productsBody.addEventListener("click", handleTableClick);
+}
+
+function restoreSession() {
+  const saved = localStorage.getItem(STORAGE_SESSION_KEY);
+  if (!saved) {
+    return;
+  }
+
+  if (USERS[saved]) {
+    state.user = USERS[saved];
+  }
+}
+
+function handleLogin(event) {
+  event.preventDefault();
+
+  const formData = new FormData(event.currentTarget);
+  const username = String(formData.get("username") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "").trim();
+
+  const user = USERS[username];
+
+  if (!user || user.password !== password) {
+    refs.loginError.textContent = "Identifiants invalides.";
+    refs.loginError.classList.remove("hidden");
+    return;
+  }
+
+  state.user = user;
+  localStorage.setItem(STORAGE_SESSION_KEY, user.username);
+  refs.loginError.classList.add("hidden");
+  refs.loginForm.reset();
+  render();
+}
+
+function handleLogout() {
+  state.user = null;
+  localStorage.removeItem(STORAGE_SESSION_KEY);
+  render();
+}
+
+async function handleAddProduct(event) {
+  event.preventDefault();
+
+  if (!state.user) {
+    return;
+  }
+
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+
+  const name = String(formData.get("name") || "").trim();
+  const totalStock = Math.max(0, Number(formData.get("totalStock") || 0));
+  const listedQuantity = Math.max(0, Number(formData.get("listedQuantity") || 0));
+  const listedBy = String(formData.get("listedBy") || "").trim();
+  const lowThreshold = Math.max(0, Number(formData.get("lowThreshold") || DEFAULT_LOW_THRESHOLD));
+  const articleLink = String(formData.get("articleLink") || "").trim();
+  const photoUrl = String(formData.get("photoUrl") || "").trim();
+  const photoFile = formData.get("photoFile");
+
+  if (!name) {
+    showStatus("Le nom du produit est obligatoire.", "error");
+    return;
+  }
+
+  if (listedQuantity > totalStock) {
+    showStatus("La quantite en vente ne peut pas depasser le stock total.", "error");
+    return;
+  }
+
+  if (listedQuantity > 0 && !listedBy) {
+    showStatus("Choisis Anthony ou Julien pour un article en vente.", "error");
+    return;
+  }
+
+  if (articleLink && !isValidHttpUrl(articleLink)) {
+    showStatus("Le lien article doit commencer par http:// ou https://.", "error");
+    return;
+  }
+
+  let photo = photoUrl;
+
+  if (photoFile instanceof File && photoFile.size > 0) {
+    try {
+      photo = await fileToDataUrl(photoFile);
+    } catch {
+      showStatus("Impossible de lire la photo importee.", "error");
+      return;
+    }
+  }
+
+  const now = new Date().toISOString();
+
+  state.products.unshift({
+    id: makeId(),
+    name,
+    totalStock,
+    listedQuantity,
+    listedBy: listedQuantity > 0 ? listedBy : "",
+    lowThreshold,
+    articleLink,
+    photo,
+    createdBy: state.user.username,
+    createdAt: now,
+    updatedAt: now
+  });
+
+  persistProducts();
+  form.reset();
+  form.elements.totalStock.value = "0";
+  form.elements.listedQuantity.value = "0";
+  form.elements.lowThreshold.value = String(DEFAULT_LOW_THRESHOLD);
+  showStatus("Produit ajoute.", "info");
+  render();
+}
+
+function handleTableSubmit(event) {
+  event.preventDefault();
+
+  const form = event.target;
+  const productId = form.dataset.id;
+  const action = form.dataset.action;
+
+  if (!productId || !action) {
+    return;
+  }
+
+  const product = state.products.find((item) => item.id === productId);
+
+  if (!product) {
+    showStatus("Produit introuvable.", "error");
+    return;
+  }
+
+  if (action === "addStock") {
+    const quantityInput = form.querySelector("input[name='stockToAdd']");
+    const quantity = Math.max(0, Number(quantityInput?.value || 0));
+
+    if (quantity <= 0) {
+      showStatus("La quantite a ajouter doit etre > 0.", "error");
+      return;
+    }
+
+    product.totalStock += quantity;
+    product.updatedAt = new Date().toISOString();
+    persistProducts();
+    showStatus(`Stock ajoute (+${quantity}) pour ${product.name}.`, "info");
+    render();
+    return;
+  }
+
+  if (action === "updateSale") {
+    const seller = String(form.querySelector("select[name='saleSeller']")?.value || "").trim();
+    const listedQuantity = Math.max(0, Number(form.querySelector("input[name='saleQty']")?.value || 0));
+
+    if (listedQuantity > product.totalStock) {
+      showStatus("La quantite en vente depasse le stock total.", "error");
+      return;
+    }
+
+    if (listedQuantity > 0 && !seller) {
+      showStatus("Choisis Anthony ou Julien pour la mise en vente.", "error");
+      return;
+    }
+
+    product.listedQuantity = listedQuantity;
+    product.listedBy = listedQuantity > 0 ? seller : "";
+    product.updatedAt = new Date().toISOString();
+    persistProducts();
+    showStatus(`Mise en vente mise a jour pour ${product.name}.`, "info");
+    render();
+  }
+}
+
+function handleTableClick(event) {
+  const button = event.target.closest("button[data-action='delete']");
+  if (!button) {
+    return;
+  }
+
+  const productId = button.dataset.id;
+
+  const product = state.products.find((item) => item.id === productId);
+  if (!product) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Supprimer ${product.name} ?`);
+  if (!confirmed) {
+    return;
+  }
+
+  state.products = state.products.filter((item) => item.id !== productId);
+  persistProducts();
+  showStatus(`Produit supprime: ${product.name}.`, "info");
+  render();
+}
+
+function render() {
+  const isLogged = Boolean(state.user);
+
+  refs.loginView.classList.toggle("hidden", isLogged);
+  refs.dashboardView.classList.toggle("hidden", !isLogged);
+
+  if (!isLogged) {
+    return;
+  }
+
+  refs.sessionBadge.textContent = state.user.displayName;
+  refs.sessionBadge.className = `seller-badge ${state.user.badgeClass}`;
+
+  renderStats();
+  renderTable();
+}
+
+function renderStats() {
+  const totalProducts = state.products.length;
+  const totalAvailable = state.products.reduce((sum, product) => sum + getAvailableStock(product), 0);
+  const totalLow = state.products.filter((product) => isLowStock(product)).length;
+  const totalListed = state.products.reduce((sum, product) => sum + Number(product.listedQuantity || 0), 0);
+
+  refs.statProducts.textContent = String(totalProducts);
+  refs.statAvailable.textContent = String(totalAvailable);
+  refs.statLow.textContent = String(totalLow);
+  refs.statListed.textContent = String(totalListed);
+}
+
+function renderTable() {
+  const products = getVisibleProducts();
+
+  refs.emptyState.classList.toggle("hidden", products.length > 0);
+
+  refs.productsBody.innerHTML = products
+    .map((product) => {
+      const availableStock = getAvailableStock(product);
+      const lowClass = isLowStock(product) ? "low-stock" : "";
+      const availableClass = isLowStock(product) ? "stock-low-value" : "";
+      const sellerBadge = renderSellerBadge(product.listedBy);
+      const photoCell = product.photo
+        ? `<img class="product-photo" src="${escapeHtml(product.photo)}" alt="Photo ${escapeHtml(product.name)}">`
+        : '<div class="no-photo">Pas photo</div>';
+
+      const articleCell = product.articleLink
+        ? `<a href="${escapeHtml(product.articleLink)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>`
+        : "-";
+
+      return `
+        <tr class="${lowClass}">
+          <td>${photoCell}</td>
+          <td>
+            <strong>${escapeHtml(product.name)}</strong><br>
+            <small>Ajoute par ${escapeHtml(product.createdBy || "-")}</small>
+          </td>
+          <td>${sellerBadge}</td>
+          <td>${product.totalStock}</td>
+          <td>${product.listedQuantity}</td>
+          <td class="${availableClass}">${availableStock}</td>
+          <td>${product.lowThreshold}</td>
+          <td>${articleCell}</td>
+          <td>
+            <div class="actions">
+              <form class="inline-form" data-action="addStock" data-id="${product.id}">
+                <input class="tiny" type="number" min="1" name="stockToAdd" value="1" required>
+                <button class="btn btn-main btn-small" type="submit">+ Stock</button>
+              </form>
+
+              <form class="inline-form" data-action="updateSale" data-id="${product.id}">
+                <select name="saleSeller">
+                  <option value="" ${product.listedBy ? "" : "selected"}>Personne</option>
+                  <option value="anthony" ${product.listedBy === "anthony" ? "selected" : ""}>Anthony</option>
+                  <option value="julien" ${product.listedBy === "julien" ? "selected" : ""}>Julien</option>
+                </select>
+                <input class="tiny" type="number" min="0" name="saleQty" value="${product.listedQuantity}" required>
+                <button class="btn btn-outline btn-small" type="submit">Maj vente</button>
+              </form>
+
+              <button class="btn btn-danger btn-small" type="button" data-action="delete" data-id="${product.id}">Supprimer</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function getVisibleProducts() {
+  const filtered = state.products.filter((product) => {
+    const haystack = `${product.name} ${product.articleLink} ${product.listedBy}`.toLowerCase();
+
+    const matchesSearch = !state.search || haystack.includes(state.search);
+    const matchesSeller = state.sellerFilter === "all" || product.listedBy === state.sellerFilter;
+    const matchesLow = !state.lowOnly || isLowStock(product);
+
+    return matchesSearch && matchesSeller && matchesLow;
+  });
+
+  filtered.sort((a, b) => compareProducts(a, b, state.sort));
+  return filtered;
+}
+
+function compareProducts(a, b, sort) {
+  if (sort === "nameAsc") {
+    return a.name.localeCompare(b.name, "fr", { sensitivity: "base" });
+  }
+
+  if (sort === "availableAsc") {
+    return getAvailableStock(a) - getAvailableStock(b);
+  }
+
+  if (sort === "availableDesc") {
+    return getAvailableStock(b) - getAvailableStock(a);
+  }
+
+  if (sort === "listedDesc") {
+    return b.listedQuantity - a.listedQuantity;
+  }
+
+  return String(b.updatedAt).localeCompare(String(a.updatedAt));
+}
+
+function getAvailableStock(product) {
+  const total = Math.max(0, Number(product.totalStock || 0));
+  const listed = Math.max(0, Number(product.listedQuantity || 0));
+  return Math.max(total - listed, 0);
+}
+
+function isLowStock(product) {
+  return getAvailableStock(product) <= Number(product.lowThreshold || DEFAULT_LOW_THRESHOLD);
+}
+
+function renderSellerBadge(sellerKey) {
+  if (sellerKey === "anthony") {
+    return '<span class="seller-badge seller-anthony">Anthony</span>';
+  }
+
+  if (sellerKey === "julien") {
+    return '<span class="seller-badge seller-julien">Julien</span>';
+  }
+
+  return '<span class="seller-badge seller-none">Personne</span>';
+}
+
+function loadProducts() {
+  const raw = localStorage.getItem(STORAGE_DATA_KEY);
+
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map(normalizeProduct).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeProduct(rawProduct) {
+  if (!rawProduct || typeof rawProduct !== "object") {
+    return null;
+  }
+
+  const totalStock = Math.max(0, Number(rawProduct.totalStock || 0));
+  const listedQuantity = Math.max(0, Number(rawProduct.listedQuantity || 0));
+
+  return {
+    id: String(rawProduct.id || makeId()),
+    name: String(rawProduct.name || "Produit sans nom").trim(),
+    totalStock,
+    listedQuantity: Math.min(listedQuantity, totalStock),
+    listedBy: rawProduct.listedBy === "anthony" || rawProduct.listedBy === "julien" ? rawProduct.listedBy : "",
+    lowThreshold: Math.max(0, Number(rawProduct.lowThreshold || DEFAULT_LOW_THRESHOLD)),
+    articleLink: String(rawProduct.articleLink || "").trim(),
+    photo: String(rawProduct.photo || "").trim(),
+    createdBy: String(rawProduct.createdBy || "").trim(),
+    createdAt: String(rawProduct.createdAt || new Date().toISOString()),
+    updatedAt: String(rawProduct.updatedAt || rawProduct.createdAt || new Date().toISOString())
+  };
+}
+
+function persistProducts() {
+  localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(state.products));
+}
+
+function showStatus(message, kind) {
+  refs.statusMessage.textContent = message;
+  refs.statusMessage.className = `message ${kind}`;
+  refs.statusMessage.classList.remove("hidden");
+
+  window.clearTimeout(showStatus.timeoutId);
+  showStatus.timeoutId = window.setTimeout(() => {
+    refs.statusMessage.classList.add("hidden");
+  }, 3500);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("file_read_error"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function makeId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function isValidHttpUrl(text) {
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
