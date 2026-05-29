@@ -24,6 +24,9 @@ const state = {
   user: null,
   search: "",
   sellerFilter: "all",
+  excludeAnthony: false,
+  excludeJulien: false,
+  stockZeroMode: "all",
   lowOnly: false,
   sort: "updatedDesc",
   sync: {
@@ -45,6 +48,9 @@ const refs = {
   addProductForm: document.getElementById("addProductForm"),
   searchInput: document.getElementById("searchInput"),
   sellerFilter: document.getElementById("sellerFilter"),
+  excludeAnthony: document.getElementById("excludeAnthony"),
+  excludeJulien: document.getElementById("excludeJulien"),
+  stockZeroFilter: document.getElementById("stockZeroFilter"),
   lowOnly: document.getElementById("lowOnly"),
   sortSelect: document.getElementById("sortSelect"),
   productsBody: document.getElementById("productsBody"),
@@ -78,6 +84,21 @@ function bindEvents() {
 
   refs.sellerFilter.addEventListener("change", (event) => {
     state.sellerFilter = event.target.value;
+    renderTable();
+  });
+
+  refs.excludeAnthony.addEventListener("change", (event) => {
+    state.excludeAnthony = event.target.checked;
+    renderTable();
+  });
+
+  refs.excludeJulien.addEventListener("change", (event) => {
+    state.excludeJulien = event.target.checked;
+    renderTable();
+  });
+
+  refs.stockZeroFilter.addEventListener("change", (event) => {
+    state.stockZeroMode = event.target.value;
     renderTable();
   });
 
@@ -402,7 +423,7 @@ function renderTable() {
   refs.productsBody.innerHTML = products
     .map((product) => {
       const availableStock = getAvailableStock(product);
-      const lowClass = isLowStock(product) ? "low-stock" : "";
+      const outOfStockClass = availableStock === 0 ? "out-of-stock-row" : "";
       const availableClass = isLowStock(product) ? "stock-low-value" : "";
       const sellerBadge = renderSellerBadge(product.listedBy);
       const photoCell = product.photo
@@ -414,7 +435,7 @@ function renderTable() {
         : "-";
 
       return `
-        <tr class="${lowClass}">
+        <tr class="${outOfStockClass}">
           <td>${photoCell}</td>
           <td>
             <strong>${escapeHtml(product.name)}</strong><br>
@@ -459,9 +480,11 @@ function getVisibleProducts() {
 
     const matchesSearch = !state.search || haystack.includes(state.search);
     const matchesSeller = listedByMatchesFilter(product.listedBy, state.sellerFilter);
+    const matchesExclusion = !isSellerExcluded(product.listedBy);
+    const matchesStockZero = matchesStockZeroMode(product, state.stockZeroMode);
     const matchesLow = !state.lowOnly || isLowStock(product);
 
-    return matchesSearch && matchesSeller && matchesLow;
+    return matchesSearch && matchesSeller && matchesExclusion && matchesStockZero && matchesLow;
   });
 
   filtered.sort((a, b) => compareProducts(a, b, state.sort));
@@ -636,6 +659,35 @@ function listedByMatchesFilter(listedBy, filterValue) {
   }
 
   return listedBy === filterValue;
+}
+
+function isSellerExcluded(listedBy) {
+  const includesAnthony = listedBy === SELLER_ANTHONY || listedBy === SELLER_BOTH;
+  const includesJulien = listedBy === SELLER_JULIEN || listedBy === SELLER_BOTH;
+
+  if (state.excludeAnthony && includesAnthony) {
+    return true;
+  }
+
+  if (state.excludeJulien && includesJulien) {
+    return true;
+  }
+
+  return false;
+}
+
+function matchesStockZeroMode(product, mode) {
+  const isZero = getAvailableStock(product) === 0;
+
+  if (mode === "onlyZero") {
+    return isZero;
+  }
+
+  if (mode === "hideZero") {
+    return !isZero;
+  }
+
+  return true;
 }
 
 function persistProductsCache() {

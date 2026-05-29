@@ -128,6 +128,14 @@
               <option value="both">Nous deux</option>
             </select>
           </label>
+          <label class="check-label">
+            <input id="excludeAnthony" type="checkbox">
+            Exclure Anthony
+          </label>
+          <label class="check-label">
+            <input id="excludeJulien" type="checkbox">
+            Exclure Julien
+          </label>
           <label>
             Tri
             <select id="sortSelect">
@@ -136,6 +144,14 @@
               <option value="availableAsc">Stock dispo croissant</option>
               <option value="availableDesc">Stock dispo decroissant</option>
               <option value="listedDesc">En vente decroissant</option>
+            </select>
+          </label>
+          <label>
+            Stock dispo 0
+            <select id="stockZeroFilter">
+              <option value="all">Afficher tous</option>
+              <option value="onlyZero">Uniquement stock 0</option>
+              <option value="hideZero">Masquer stock 0</option>
             </select>
           </label>
           <label class="check-label">

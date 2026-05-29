@@ -313,7 +313,7 @@ th {
   color: var(--muted);
 }
 
-.low-stock {
+.out-of-stock-row {
   background: var(--danger-soft);
 }
 
