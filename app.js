@@ -1,6 +1,7 @@
 const STORAGE_DATA_KEY = "vinted_stocks_data_v1";
 const STORAGE_SESSION_KEY = "vinted_stocks_session_v1";
 const DEFAULT_LOW_THRESHOLD = 3;
+const DEFAULT_SYNC_PATH = "vinted-stocks/shared/products";
 
 const USERS = {
   anthony: {
@@ -21,7 +22,13 @@ const state = {
   search: "",
   sellerFilter: "all",
   lowOnly: false,
-  sort: "updatedDesc"
+  sort: "updatedDesc",
+  sync: {
+    mode: "local",
+    ready: false,
+    error: "",
+    firebaseRef: null
+  }
 };
 
 const refs = {
@@ -30,6 +37,7 @@ const refs = {
   loginForm: document.getElementById("loginForm"),
   loginError: document.getElementById("loginError"),
   sessionBadge: document.getElementById("sessionBadge"),
+  syncBadge: document.getElementById("syncBadge"),
   logoutBtn: document.getElementById("logoutBtn"),
   addProductForm: document.getElementById("addProductForm"),
   searchInput: document.getElementById("searchInput"),
@@ -45,13 +53,14 @@ const refs = {
   statListed: document.getElementById("statListed")
 };
 
-init();
+void init();
 
-function init() {
-  state.products = loadProducts();
+async function init() {
+  state.products = loadProductsFromCache();
   bindEvents();
   restoreSession();
   render();
+  await setupSync();
 }
 
 function bindEvents() {
@@ -79,8 +88,13 @@ function bindEvents() {
     renderTable();
   });
 
-  refs.productsBody.addEventListener("submit", handleTableSubmit);
-  refs.productsBody.addEventListener("click", handleTableClick);
+  refs.productsBody.addEventListener("submit", (event) => {
+    void handleTableSubmit(event);
+  });
+
+  refs.productsBody.addEventListener("click", (event) => {
+    void handleTableClick(event);
+  });
 }
 
 function restoreSession() {
@@ -110,7 +124,7 @@ async function handleLogin(event) {
   }
 
   if (!window.APP_CONFIG || !window.APP_CONFIG.users) {
-    refs.loginError.textContent = "Config absente: verifie Pages=GitHub Actions puis redeploie.";
+    refs.loginError.textContent = "Config absente: verifie le fichier config.js.";
     refs.loginError.classList.remove("hidden");
     return;
   }
@@ -118,13 +132,13 @@ async function handleLogin(event) {
   const expectedHash = getPasswordHashForUser(username);
 
   if (!expectedHash) {
-    refs.loginError.textContent = `Hash manquant pour ${username}: verifie les secrets puis redeploie.`;
+    refs.loginError.textContent = `Hash manquant pour ${username}: complete config.js puis redeploie.`;
     refs.loginError.classList.remove("hidden");
     return;
   }
 
   if (!isValidSha256Hex(expectedHash)) {
-    refs.loginError.textContent = "Configuration mot de passe manquante (GitHub Secrets).";
+    refs.loginError.textContent = "Configuration mot de passe invalide.";
     refs.loginError.classList.remove("hidden");
     return;
   }
@@ -209,7 +223,7 @@ async function handleAddProduct(event) {
 
   const now = new Date().toISOString();
 
-  state.products.unshift({
+  const product = {
     id: makeId(),
     name,
     totalStock,
@@ -221,9 +235,12 @@ async function handleAddProduct(event) {
     createdBy: state.user.username,
     createdAt: now,
     updatedAt: now
-  });
+  };
 
-  persistProducts();
+  state.products.unshift(product);
+  persistProductsCache();
+  await syncUpsertProduct(product);
+
   form.reset();
   form.elements.totalStock.value = "0";
   form.elements.listedQuantity.value = "0";
@@ -232,7 +249,7 @@ async function handleAddProduct(event) {
   render();
 }
 
-function handleTableSubmit(event) {
+async function handleTableSubmit(event) {
   event.preventDefault();
 
   const form = event.target;
@@ -261,7 +278,8 @@ function handleTableSubmit(event) {
 
     product.totalStock += quantity;
     product.updatedAt = new Date().toISOString();
-    persistProducts();
+    persistProductsCache();
+    await syncUpsertProduct(product);
     showStatus(`Stock ajoute (+${quantity}) pour ${product.name}.`, "info");
     render();
     return;
@@ -284,13 +302,14 @@ function handleTableSubmit(event) {
     product.listedQuantity = listedQuantity;
     product.listedBy = listedQuantity > 0 ? seller : "";
     product.updatedAt = new Date().toISOString();
-    persistProducts();
+    persistProductsCache();
+    await syncUpsertProduct(product);
     showStatus(`Mise en vente mise a jour pour ${product.name}.`, "info");
     render();
   }
 }
 
-function handleTableClick(event) {
+async function handleTableClick(event) {
   const button = event.target.closest("button[data-action='delete']");
   if (!button) {
     return;
@@ -309,7 +328,8 @@ function handleTableClick(event) {
   }
 
   state.products = state.products.filter((item) => item.id !== productId);
-  persistProducts();
+  persistProductsCache();
+  await syncDeleteProduct(productId);
   showStatus(`Produit supprime: ${product.name}.`, "info");
   render();
 }
@@ -327,8 +347,36 @@ function render() {
   refs.sessionBadge.textContent = state.user.displayName;
   refs.sessionBadge.className = `seller-badge ${state.user.badgeClass}`;
 
+  renderSyncBadge();
   renderStats();
   renderTable();
+}
+
+function renderSyncBadge() {
+  if (!refs.syncBadge) {
+    return;
+  }
+
+  if (state.sync.mode !== "firebase") {
+    refs.syncBadge.textContent = "Sync local";
+    refs.syncBadge.className = "sync-badge sync-local";
+    return;
+  }
+
+  if (state.sync.error) {
+    refs.syncBadge.textContent = "Sync erreur";
+    refs.syncBadge.className = "sync-badge sync-error";
+    return;
+  }
+
+  if (!state.sync.ready) {
+    refs.syncBadge.textContent = "Sync...";
+    refs.syncBadge.className = "sync-badge sync-pending";
+    return;
+  }
+
+  refs.syncBadge.textContent = "Sync partage";
+  refs.syncBadge.className = "sync-badge sync-ok";
 }
 
 function renderStats() {
@@ -458,7 +506,16 @@ function renderSellerBadge(sellerKey) {
   return '<span class="seller-badge seller-none">Personne</span>';
 }
 
-function loadProducts() {
+function normalizeProductsFromRemote(raw) {
+  if (!raw) {
+    return [];
+  }
+
+  const source = Array.isArray(raw) ? raw : Object.values(raw);
+  return source.map(normalizeProduct).filter(Boolean);
+}
+
+function loadProductsFromCache() {
   const raw = localStorage.getItem(STORAGE_DATA_KEY);
 
   if (!raw) {
@@ -500,8 +557,163 @@ function normalizeProduct(rawProduct) {
   };
 }
 
-function persistProducts() {
+function persistProductsCache() {
   localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(state.products));
+}
+
+function getSyncConfig() {
+  const sync = window.APP_CONFIG && window.APP_CONFIG.sync ? window.APP_CONFIG.sync : null;
+  if (!sync || sync.provider !== "firebase" || !sync.enabled) {
+    return { enabled: false };
+  }
+
+  return {
+    enabled: true,
+    path: String(sync.path || DEFAULT_SYNC_PATH),
+    firebase: sync.firebase || {}
+  };
+}
+
+function isFirebaseConfigValid(firebaseConfig) {
+  if (!firebaseConfig || typeof firebaseConfig !== "object") {
+    return false;
+  }
+
+  const requiredKeys = ["apiKey", "authDomain", "databaseURL", "projectId", "appId"];
+  return requiredKeys.every((key) => typeof firebaseConfig[key] === "string" && firebaseConfig[key].trim().length > 0);
+}
+
+function sanitizeSyncPath(path) {
+  const clean = String(path || DEFAULT_SYNC_PATH).trim().replace(/^\/+|\/+$/g, "");
+  return clean || DEFAULT_SYNC_PATH;
+}
+
+function toRemoteProductMap(products) {
+  const entries = products.map((product) => [product.id, product]);
+  return Object.fromEntries(entries);
+}
+
+async function setupSync() {
+  const syncConfig = getSyncConfig();
+
+  if (!syncConfig.enabled) {
+    state.sync.mode = "local";
+    state.sync.ready = true;
+    state.sync.error = "";
+    renderSyncBadge();
+    return;
+  }
+
+  if (!window.firebase || !window.firebase.database) {
+    state.sync.mode = "local";
+    state.sync.ready = false;
+    state.sync.error = "firebase_sdk_missing";
+    renderSyncBadge();
+    showStatus("Sync cloud indisponible: SDK Firebase non charge.", "error");
+    return;
+  }
+
+  if (!isFirebaseConfigValid(syncConfig.firebase)) {
+    state.sync.mode = "local";
+    state.sync.ready = false;
+    state.sync.error = "firebase_config_invalid";
+    renderSyncBadge();
+    showStatus("Sync cloud desactive: configuration Firebase incomplete.", "error");
+    return;
+  }
+
+  try {
+    if (!window.firebase.apps.length) {
+      window.firebase.initializeApp(syncConfig.firebase);
+    }
+
+    const db = window.firebase.database();
+    const ref = db.ref(sanitizeSyncPath(syncConfig.path));
+
+    state.sync.mode = "firebase";
+    state.sync.ready = false;
+    state.sync.error = "";
+    state.sync.firebaseRef = ref;
+    renderSyncBadge();
+
+    const snapshot = await ref.once("value");
+
+    if (!snapshot.exists()) {
+      if (state.products.length > 0) {
+        await ref.set(toRemoteProductMap(state.products));
+      } else {
+        await ref.set({});
+      }
+    } else {
+      state.products = normalizeProductsFromRemote(snapshot.val());
+      persistProductsCache();
+      render();
+    }
+
+    ref.on(
+      "value",
+      (liveSnapshot) => {
+        state.products = normalizeProductsFromRemote(liveSnapshot.val());
+        persistProductsCache();
+        state.sync.ready = true;
+        state.sync.error = "";
+        render();
+      },
+      () => {
+        state.sync.ready = false;
+        state.sync.error = "firebase_read_failed";
+        renderSyncBadge();
+        showStatus("Sync cloud en erreur: lecture impossible.", "error");
+      }
+    );
+
+    state.sync.ready = true;
+    state.sync.error = "";
+    renderSyncBadge();
+  } catch {
+    state.sync.mode = "local";
+    state.sync.ready = false;
+    state.sync.error = "firebase_init_failed";
+    state.sync.firebaseRef = null;
+    renderSyncBadge();
+    showStatus("Sync cloud en erreur: verifie la config Firebase.", "error");
+  }
+}
+
+async function syncUpsertProduct(product) {
+  if (state.sync.mode !== "firebase" || !state.sync.firebaseRef) {
+    return;
+  }
+
+  try {
+    await state.sync.firebaseRef.child(product.id).set(product);
+    state.sync.error = "";
+    state.sync.ready = true;
+    renderSyncBadge();
+  } catch {
+    state.sync.ready = false;
+    state.sync.error = "firebase_write_failed";
+    renderSyncBadge();
+    showStatus("Sync cloud en erreur: ecriture impossible.", "error");
+  }
+}
+
+async function syncDeleteProduct(productId) {
+  if (state.sync.mode !== "firebase" || !state.sync.firebaseRef) {
+    return;
+  }
+
+  try {
+    await state.sync.firebaseRef.child(productId).remove();
+    state.sync.error = "";
+    state.sync.ready = true;
+    renderSyncBadge();
+  } catch {
+    state.sync.ready = false;
+    state.sync.error = "firebase_delete_failed";
+    renderSyncBadge();
+    showStatus("Sync cloud en erreur: suppression impossible.", "error");
+  }
 }
 
 function showStatus(message, kind) {

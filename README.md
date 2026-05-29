@@ -20,18 +20,19 @@ Mini app statique pour gerer vos stocks Vinted a 2 utilisateurs.
   - Mettre a jour la mise en vente
   - Supprimer un produit
 - Recherche, filtres et tris
-- Persistance locale via `localStorage`
+- Sync partage multi-PC via Firebase Realtime Database (optionnel)
+- Cache local `localStorage` (fallback)
 
 ## Utilisateurs
 
 - `anthony`
 - `julien`
 
-Les mots de passe ne sont plus stockes en dur dans le code. Ils sont injectes via GitHub Secrets pendant le deploiement.
+Le login utilise des hash SHA-256 dans `config.js` (pas de mot de passe en clair dans le code).
 
 ## Lancer en local
 
-Avant de tester en local, renseigner les hash dans `config.js`.
+Avant de tester, renseigner les hash dans `config.js`.
 
 Exemple pour generer un hash SHA-256:
 
@@ -49,26 +50,61 @@ python3 -m http.server 8080
 
 Puis ouvrir `http://localhost:8080`.
 
-## Configuration des mots de passe (GitHub Secrets)
+## Partage entre plusieurs PC (Anthony + Julien)
 
-Dans le repo GitHub, ajouter ces secrets:
+Pour que les deux PC voient les memes stocks en temps reel:
 
-- `ANTHONY_PASSWORD`
-- `JULIEN_PASSWORD`
+1. Creer un projet Firebase.
+2. Activer `Realtime Database` (region de ton choix).
+3. Pour test rapide, mettre ces regles:
 
-Le workflow calcule automatiquement les hash SHA-256 et genere `config.js` au build.
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
+```
+
+4. Recuperer la config Web Firebase (`apiKey`, `authDomain`, `databaseURL`, `projectId`, `appId`, etc.).
+5. Remplir `config.js`:
+
+```js
+window.APP_CONFIG = {
+  users: {
+    anthony: { passwordHash: "..." },
+    julien: { passwordHash: "..." }
+  },
+  sync: {
+    provider: "firebase",
+    enabled: true,
+    path: "vinted-stocks/shared/products",
+    firebase: {
+      apiKey: "...",
+      authDomain: "...",
+      databaseURL: "...",
+      projectId: "...",
+      storageBucket: "...",
+      messagingSenderId: "...",
+      appId: "..."
+    }
+  }
+};
+```
+
+6. Deploy sur GitHub Pages.
+7. Le badge en haut doit afficher `Sync partage` sur chaque PC.
 
 ## Deploiement GitHub Pages
 
-1. Pousser ces fichiers sur un repo GitHub (branche `main`).
-2. Ajouter les secrets `ANTHONY_PASSWORD` et `JULIEN_PASSWORD`.
-3. Dans GitHub: `Settings > Pages`.
-4. Dans `Build and deployment`, choisir `Source: GitHub Actions`.
-5. Le workflow `.github/workflows/static.yml` va deployer automatiquement.
+1. Pousser ces fichiers sur un repo GitHub (`main`).
+2. `Settings > Pages`.
+3. `Source: GitHub Actions` ou `Deploy from a branch` (les deux fonctionnent pour site statique).
+4. Ouvrir l'URL Pages.
 
 ## Important (securite)
 
-Le login reste 100% cote client (front-end) et sert a separer visuellement les 2 utilisateurs.
-Ce n'est pas un systeme d'authentification serveur.
+Le login reste cote client (front-end). Ce n'est pas une auth serveur forte.
 
-Pour une vraie securite multi-utilisateur, il faut un back-end (API + base de donnees + auth serveur).
+Pour production, securiser les regles Firebase (pas `read/write=true`) et ajouter une vraie auth serveur.
