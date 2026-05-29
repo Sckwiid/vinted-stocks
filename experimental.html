@@ -1,0 +1,1706 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vinted Prep - Experimental</title>
+  <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --text-base: 16px;
+      --line-height: 1.45;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+
+      --bg: #111111;
+      --surface: #1a1a1a;
+      --surface-2: #151515;
+      --border: #2d2d2d;
+      --text: #f1f1f1;
+      --muted: #a8a8a8;
+      --accent: #00998a;
+      --accent-hover: #00ad9d;
+      --danger: #ff5d5d;
+      --success: #21c464;
+      --focus: #24bdae66;
+      --shadow: 0 10px 34px #00000045;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 85% -10%, #0f3d39 0%, transparent 38%),
+        radial-gradient(circle at 10% 120%, #0d2524 0%, transparent 45%),
+        #0f1012;
+      color: var(--text);
+      font-family: var(--font-family);
+      font-size: var(--text-base);
+      line-height: var(--line-height);
+      overflow-x: hidden;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    button, input, textarea {
+      font: inherit;
+      color: inherit;
+      min-width: 0;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="file"],
+    textarea {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--border);
+      background: #17191c;
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+
+    input[type="file"] {
+      padding: 8px 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    input[type="file"]::file-selector-button {
+      border: 1px solid #37404a;
+      background: #21262d;
+      color: #e8eef5;
+      border-radius: 8px;
+      padding: 7px 11px;
+      margin-right: 10px;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      background: #27303a;
+      border-color: #495564;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--focus);
+    }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: #0e0f11d8;
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #2a2d317a;
+      box-shadow: 0 10px 22px #00000033;
+    }
+
+    .header-inner {
+      width: min(1180px, calc(100% - 20px));
+      margin: 0 auto;
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: 10px 0;
+    }
+
+    .header-title-wrap {
+      min-width: 0;
+    }
+
+    .header-title {
+      margin: 0;
+      font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+      line-height: 1.15;
+    }
+
+    .header-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .app {
+      padding: var(--space-4) 0 var(--space-8);
+    }
+
+    .container {
+      width: min(1180px, calc(100% - 20px));
+      margin: 0 auto;
+      display: grid;
+      gap: var(--space-4);
+    }
+
+    .card {
+      background: linear-gradient(180deg, #16181b, #141518);
+      border: 1px solid #2a2d31;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      margin-bottom: var(--space-3);
+    }
+
+    h2, h3, h4 {
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    h2 {
+      font-size: clamp(1.1rem, 2.6vw, 1.7rem);
+    }
+
+    h3 {
+      font-size: clamp(1rem, 2.2vw, 1.2rem);
+    }
+
+    .hint {
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: var(--space-4);
+      grid-template-columns: 1fr;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      min-height: 46px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      text-decoration: none;
+      font-weight: 650;
+      white-space: nowrap;
+      touch-action: manipulation;
+    }
+
+    .btn:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      color: #041615;
+      border-color: var(--accent);
+    }
+
+    .btn.primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .btn.ghost {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .btn.ghost:hover:not(:disabled) {
+      border-color: #4b4f56;
+      background: #ffffff08;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      align-items: center;
+    }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-2);
+    }
+
+    .step-chip {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #121417;
+      min-height: 50px;
+      padding: 0 var(--space-3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      color: var(--muted);
+    }
+
+    .step-chip .circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 1px solid currentColor;
+      display: grid;
+      place-items: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .step-chip.active {
+      color: var(--accent);
+      border-color: #0f6f66;
+      box-shadow: 0 0 0 1px #0f6f66 inset;
+    }
+
+    .step-chip.done {
+      color: var(--success);
+      border-color: #1b5f38;
+      box-shadow: 0 0 0 1px #1b5f38 inset;
+    }
+
+    .status-pill {
+      border: 1px solid #2f5f59;
+      color: #9ce8df;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.86rem;
+      background: #0c2e2a;
+      white-space: nowrap;
+    }
+
+    .status-pill.warn {
+      border-color: #5e4a2c;
+      color: #ffd99a;
+      background: #2f2415;
+    }
+
+    .status-pill.error {
+      border-color: #653030;
+      color: #ffc2c2;
+      background: #341717;
+    }
+
+    .preview-grid {
+      margin-top: var(--space-3);
+      display: grid;
+      gap: var(--space-3);
+      grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    }
+
+    .thumb-card,
+    .thumb-placeholder {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: var(--radius-sm);
+      border: 1px dashed #2d3f41;
+      background: #11181a;
+      overflow: hidden;
+    }
+
+    .thumb-placeholder {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .thumb-card {
+      cursor: pointer;
+      border: 1px solid #2a3c40;
+      padding: 0;
+    }
+
+    .thumb-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .thumb-label {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      background: #0000009a;
+      color: #fff;
+      font-size: 0.78rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #ffffff40;
+    }
+
+    .inline-banner {
+      margin-top: var(--space-3);
+      border: 1px solid #5f2d2d;
+      background: #351b1b;
+      color: #ffd1d1;
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      display: none;
+      white-space: pre-line;
+      line-height: 1.4;
+    }
+
+    .inline-banner.show {
+      display: block;
+    }
+
+    .inline-banner.success {
+      border-color: #276846;
+      background: #173727;
+      color: #bbf8cf;
+    }
+
+    .inline-banner.warn {
+      border-color: #70603b;
+      background: #322915;
+      color: #ffe6b3;
+    }
+
+    .progress-wrap {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid #234240;
+      background: #0c1516;
+      overflow: hidden;
+      margin-top: var(--space-3);
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #00998a, #39cab8);
+      transition: width 0.2s ease;
+    }
+
+    .progress-label {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .stage-list {
+      margin-top: var(--space-3);
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .stage-item {
+      border: 1px solid #2a3136;
+      background: #12161b;
+      border-radius: var(--radius-sm);
+      padding: 10px;
+    }
+
+    .stage-item-title {
+      margin: 0 0 8px;
+      font-weight: 650;
+    }
+
+    .stage-tags {
+      display: grid;
+      gap: 6px;
+    }
+
+    .stage-tag {
+      border-radius: 999px;
+      border: 1px solid #38434f;
+      padding: 5px 9px;
+      font-size: 0.82rem;
+      color: #d2d9df;
+      background: #1a222a;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .stage-tag.running {
+      border-color: #4f6c89;
+      background: #1d2732;
+      color: #b6d5ff;
+    }
+
+    .stage-tag.done {
+      border-color: #2c5a40;
+      background: #15291f;
+      color: #a8f2c7;
+    }
+
+    .stage-tag.error {
+      border-color: #7a3636;
+      background: #2f1717;
+      color: #ffb6b6;
+    }
+
+    .result-grid {
+      margin-top: var(--space-3);
+      display: grid;
+      gap: var(--space-3);
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+
+    .result-card {
+      border: 1px solid #2b3340;
+      background: #111722;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      display: grid;
+      gap: 0;
+    }
+
+    .result-card img {
+      width: 100%;
+      aspect-ratio: 4 / 5;
+      object-fit: cover;
+      cursor: pointer;
+    }
+
+    .result-meta {
+      margin: 0;
+      padding: 10px;
+      color: #bdd5e4;
+      font-size: 0.83rem;
+      line-height: 1.4;
+      white-space: pre-line;
+      background: #10151f;
+      border-top: 1px solid #273143;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-4);
+      background: #000000c4;
+      z-index: 60;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal img {
+      max-width: min(980px, 100%);
+      max-height: calc(100vh - 110px);
+      border-radius: var(--radius-sm);
+      border: 1px solid #394351;
+      box-shadow: 0 16px 40px #00000080;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      min-width: 44px;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ffffff66;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    @media (min-width: 860px) {
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .header-inner,
+      .container {
+        width: min(1180px, calc(100% - 16px));
+      }
+
+      .header-inner {
+        min-height: 60px;
+      }
+
+      .stepper {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scroll-snap-type: x mandatory;
+      }
+
+      .step-chip {
+        flex: 0 0 auto;
+        min-width: 144px;
+        justify-content: flex-start;
+        padding: 0 12px;
+        scroll-snap-align: start;
+      }
+
+      .actions {
+        align-items: stretch;
+      }
+
+      .actions .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="header-title-wrap">
+        <h1 class="header-title">Vinted Prep - Expérimental</h1>
+        <p class="header-subtitle">Profil EXIF de référence en cache local + bouton tout-en-un</p>
+      </div>
+      <a class="btn ghost" href="./index.html">Retour au mode principal</a>
+    </div>
+  </header>
+
+  <main class="app">
+    <div class="container">
+      <section class="stepper" aria-label="Étapes mode expérimental">
+        <div class="step-chip active" data-step-chip="1"><span class="circle">1</span><span>Profil EXIF</span></div>
+        <div class="step-chip" data-step-chip="2"><span class="circle">2</span><span>Upload IA</span></div>
+        <div class="step-chip" data-step-chip="3"><span class="circle">3</span><span>Tout faire</span></div>
+      </section>
+
+      <section class="card">
+        <div class="title-row">
+          <h2>Profil EXIF de référence</h2>
+          <span class="status-pill warn" id="templateStatusPill">Profil absent</span>
+        </div>
+        <p class="hint">Ajoute 1 vraie photo JPEG une seule fois: on garde son appareil + localisation en cache local navigateur. Si cache supprimé, il faudra recharger une photo.</p>
+        <div class="grid-2">
+          <div>
+            <label for="templateInput">Photo réelle de référence (JPEG)</label>
+            <input id="templateInput" type="file" accept="image/jpeg">
+            <div class="actions" style="margin-top: 12px;">
+              <button class="btn primary" id="saveTemplateBtn" type="button">Analyser + enregistrer profil</button>
+              <button class="btn ghost" id="clearTemplateBtn" type="button">Effacer le profil</button>
+            </div>
+          </div>
+          <div>
+            <h3>Résumé du profil</h3>
+            <pre class="result-meta" id="templateSummary">Aucun profil chargé.</pre>
+          </div>
+        </div>
+        <div class="inline-banner" id="templateBanner"></div>
+      </section>
+
+      <section class="card">
+        <div class="title-row">
+          <h2>Images IA (1 à 5)</h2>
+        </div>
+        <p class="hint">Tu peux ajouter les images en une ou plusieurs sélections. Le bouton tout-en-un fera perturbation + injection EXIF directement.</p>
+        <input id="aiUploadInput" type="file" accept="image/jpeg,image/png" multiple>
+        <div class="preview-grid" id="aiPreviewGrid"></div>
+        <div class="inline-banner" id="aiBanner"></div>
+      </section>
+
+      <section class="card">
+        <div class="title-row">
+          <h2>Traitement unique</h2>
+        </div>
+        <p class="hint">Le pipeline applique Shake -> Stir -> Crush, puis injecte EXIF: date/heure actuelles + appareil/localisation du profil + paramètres photo légèrement variables (ISO/exposition/etc.).</p>
+        <div class="actions">
+          <button class="btn primary" id="runAllBtn" type="button">Perturber + Injecter EXIF</button>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="progress-label" id="progressLabel">0%</div>
+        <div class="stage-list" id="stageList"></div>
+        <div class="inline-banner" id="runBanner"></div>
+      </section>
+
+      <section class="card">
+        <div class="title-row">
+          <h2>Résultats EXIF</h2>
+        </div>
+        <p class="hint">Mobile: appui long sur la photo -> « Enregistrer dans Photos » (en anglais: Save to Photos). Desktop: clic droit -> enregistrer l'image.</p>
+        <div class="result-grid" id="resultGrid"></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal" id="imageModal" aria-hidden="true">
+    <button type="button" class="btn ghost modal-close" id="closeModalBtn">Fermer</button>
+    <img id="modalImage" alt="Aperçu plein écran">
+  </div>
+
+  <script>
+    (function () {
+      const STORAGE_TEMPLATE_KEY = "vintedPrep.experimental.templateExif.v1";
+      const STORAGE_TEMPLATE_INFO_KEY = "vintedPrep.experimental.templateInfo.v1";
+      const MAX_AI_COUNT = 5;
+      const MIN_AI_COUNT = 1;
+
+      const DISRUPT_DEFAULT_OPTIONS = {
+        shake: {
+          rotationRange: 0.5,
+          scaleRange: [1.01, 1.02]
+        },
+        stir: {
+          noiseAmplitude: 5
+        },
+        crush: {
+          quality: 0.85
+        }
+      };
+
+      function makeStageState() {
+        return {
+          shake: "idle",
+          stir: "idle",
+          crush: "idle",
+          exif: "idle"
+        };
+      }
+
+      function makeNullArray(count) {
+        return Array.from({ length: count }, () => null);
+      }
+
+      function makeStageArray(count) {
+        return Array.from({ length: count }, () => makeStageState());
+      }
+
+      const state = {
+        storageAvailable: false,
+        templateExif: null,
+        templateInfo: null,
+        aiFiles: [],
+        aiPreviewUrls: [],
+        results: [],
+        resultMeta: [],
+        stages: [],
+        running: false
+      };
+
+      const els = {
+        templateInput: document.getElementById("templateInput"),
+        saveTemplateBtn: document.getElementById("saveTemplateBtn"),
+        clearTemplateBtn: document.getElementById("clearTemplateBtn"),
+        templateStatusPill: document.getElementById("templateStatusPill"),
+        templateSummary: document.getElementById("templateSummary"),
+        templateBanner: document.getElementById("templateBanner"),
+        aiUploadInput: document.getElementById("aiUploadInput"),
+        aiPreviewGrid: document.getElementById("aiPreviewGrid"),
+        aiBanner: document.getElementById("aiBanner"),
+        runAllBtn: document.getElementById("runAllBtn"),
+        progressBar: document.getElementById("progressBar"),
+        progressLabel: document.getElementById("progressLabel"),
+        stageList: document.getElementById("stageList"),
+        runBanner: document.getElementById("runBanner"),
+        resultGrid: document.getElementById("resultGrid"),
+        imageModal: document.getElementById("imageModal"),
+        closeModalBtn: document.getElementById("closeModalBtn"),
+        modalImage: document.getElementById("modalImage")
+      };
+
+      const stepChips = Array.from(document.querySelectorAll("[data-step-chip]"));
+
+      function init() {
+        state.storageAvailable = canUseLocalStorage();
+        loadTemplateFromCache();
+        bindEvents();
+        renderAiPreviewGrid();
+        renderResultGrid();
+        renderStageList();
+        renderStepState();
+        if (window.lucide && window.lucide.createIcons) {
+          window.lucide.createIcons();
+        }
+      }
+
+      function bindEvents() {
+        els.saveTemplateBtn.addEventListener("click", onSaveTemplateProfile);
+        els.clearTemplateBtn.addEventListener("click", onClearTemplateProfile);
+        els.aiUploadInput.addEventListener("change", onAiFilesChanged);
+        els.runAllBtn.addEventListener("click", onRunAll);
+        els.closeModalBtn.addEventListener("click", closeModal);
+        els.imageModal.addEventListener("click", (event) => {
+          if (event.target === els.imageModal) closeModal();
+        });
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closeModal();
+        });
+      }
+
+      function canUseLocalStorage() {
+        try {
+          const testKey = "__vinted_prep_experimental_test__";
+          window.localStorage.setItem(testKey, "1");
+          window.localStorage.removeItem(testKey);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function safeStorageGet(key) {
+        if (!state.storageAvailable) return null;
+        try {
+          return window.localStorage.getItem(key);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function safeStorageSet(key, value) {
+        if (!state.storageAvailable) return false;
+        try {
+          window.localStorage.setItem(key, value);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function safeStorageRemove(key) {
+        if (!state.storageAvailable) return false;
+        try {
+          window.localStorage.removeItem(key);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function loadTemplateFromCache() {
+        const rawExif = safeStorageGet(STORAGE_TEMPLATE_KEY);
+        const rawInfo = safeStorageGet(STORAGE_TEMPLATE_INFO_KEY);
+        if (!rawExif || !rawInfo) {
+          renderTemplateState();
+          return;
+        }
+
+        try {
+          const exif = JSON.parse(rawExif);
+          const info = JSON.parse(rawInfo);
+          if (!exif || typeof exif !== "object") throw new Error("invalid exif");
+          state.templateExif = exif;
+          state.templateInfo = info;
+        } catch (_) {
+          state.templateExif = null;
+          state.templateInfo = null;
+          safeStorageRemove(STORAGE_TEMPLATE_KEY);
+          safeStorageRemove(STORAGE_TEMPLATE_INFO_KEY);
+        }
+        renderTemplateState();
+      }
+
+      function renderTemplateState() {
+        const hasTemplate = Boolean(state.templateExif);
+        if (!hasTemplate) {
+          els.templateStatusPill.className = "status-pill warn";
+          els.templateStatusPill.textContent = "Profil absent";
+          els.templateSummary.textContent = state.storageAvailable
+            ? "Aucun profil chargé.\nAjoute une photo réelle JPEG pour créer le profil EXIF."
+            : "Aucun profil chargé.\nCe navigateur bloque le stockage local: le profil sera conservé seulement jusqu'au rechargement de page.";
+          renderStepState();
+          return;
+        }
+
+        els.templateStatusPill.className = "status-pill";
+        els.templateStatusPill.textContent = "Profil chargé";
+        const info = state.templateInfo || {};
+        const summary = [];
+        summary.push(`Source: ${info.sourceName || "photo-référence.jpg"}`);
+        summary.push(`Appareil: ${info.makeModel || "—"}`);
+        summary.push(`Localisation: ${info.gps || "—"}`);
+        summary.push(`Date profil: ${info.savedAt || "—"}`);
+        summary.push(state.storageAvailable ? "Stockage: cache local navigateur actif." : "Stockage: mémoire temporaire (pas de cache persistant).");
+        els.templateSummary.textContent = summary.join("\n");
+        renderStepState();
+      }
+
+      async function onSaveTemplateProfile() {
+        clearBanner(els.templateBanner);
+        const file = els.templateInput.files && els.templateInput.files[0];
+        if (!file) {
+          showBanner(els.templateBanner, "Ajoute d'abord une photo réelle JPEG.", "warn");
+          return;
+        }
+        if (!isJpegFile(file)) {
+          showBanner(els.templateBanner, "Le profil EXIF doit venir d'un JPEG.", "warn");
+          return;
+        }
+
+        setBusy(els.saveTemplateBtn, true, "Analyse...");
+        try {
+          const dataUrl = await fileToDataURL(file);
+          let exif = null;
+          try {
+            exif = window.piexif.load(dataUrl);
+          } catch (_) {
+            exif = null;
+          }
+          if (!exif || typeof exif !== "object") {
+            throw new Error("Aucune métadonnée EXIF lisible sur cette photo.");
+          }
+
+          const sanitized = sanitizeTemplateExif(exif);
+          if (!hasEnoughTemplateData(sanitized)) {
+            throw new Error("Le profil contient trop peu d'EXIF exploitables (appareil/localisation absents).");
+          }
+
+          const info = buildTemplateInfo(sanitized, file.name);
+          state.templateExif = sanitized;
+          state.templateInfo = info;
+
+          if (state.storageAvailable) {
+            const okExif = safeStorageSet(STORAGE_TEMPLATE_KEY, JSON.stringify(sanitized));
+            const okInfo = safeStorageSet(STORAGE_TEMPLATE_INFO_KEY, JSON.stringify(info));
+            if (!okExif || !okInfo) {
+              showBanner(els.templateBanner, "Profil créé, mais impossible d'écrire dans le cache navigateur.", "warn");
+            } else {
+              showBanner(els.templateBanner, "Profil EXIF enregistré dans le cache local navigateur.", "success");
+            }
+          } else {
+            showBanner(els.templateBanner, "Profil EXIF chargé en mémoire temporaire (pas de persistance locale).", "warn");
+          }
+
+          renderTemplateState();
+        } catch (error) {
+          showBanner(els.templateBanner, `Erreur profil EXIF: ${error.message}`);
+        } finally {
+          setBusy(els.saveTemplateBtn, false);
+        }
+      }
+
+      function onClearTemplateProfile() {
+        state.templateExif = null;
+        state.templateInfo = null;
+        safeStorageRemove(STORAGE_TEMPLATE_KEY);
+        safeStorageRemove(STORAGE_TEMPLATE_INFO_KEY);
+        renderTemplateState();
+        showBanner(els.templateBanner, "Profil EXIF supprimé.");
+      }
+
+      async function onAiFilesChanged(event) {
+        clearBanner(els.aiBanner);
+        const incoming = Array.from(event.target.files || []);
+        const merged = mergeSelectedFiles(state.aiFiles, incoming);
+        if (merged.rejected) {
+          showBanner(els.aiBanner, `Maximum ${MAX_AI_COUNT} images IA.`);
+        }
+
+        state.aiFiles = merged.files;
+        revokeUrls(state.aiPreviewUrls);
+        state.aiPreviewUrls = await Promise.all(state.aiFiles.map((f) => fileToObjectURL(f)));
+        event.target.value = "";
+
+        state.results.forEach((entry) => entry && entry.url && URL.revokeObjectURL(entry.url));
+        state.results = [];
+        state.resultMeta = [];
+        resetProgress();
+        resetStages();
+        renderAiPreviewGrid();
+        renderResultGrid();
+        renderStageList();
+        renderStepState();
+      }
+
+      function mergeSelectedFiles(currentFiles, incomingFiles) {
+        const result = [];
+        const seen = new Set();
+        const add = (file) => {
+          const key = `${file.name}__${file.size}__${file.lastModified}__${file.type}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          result.push(file);
+        };
+        currentFiles.forEach(add);
+        incomingFiles.forEach(add);
+        const rejected = result.length > MAX_AI_COUNT;
+        return {
+          files: rejected ? result.slice(0, MAX_AI_COUNT) : result,
+          rejected
+        };
+      }
+
+      function isValidAiCount(count) {
+        return Number.isInteger(count) && count >= MIN_AI_COUNT && count <= MAX_AI_COUNT;
+      }
+
+      function renderAiPreviewGrid() {
+        els.aiPreviewGrid.innerHTML = "";
+        const count = Math.max(state.aiPreviewUrls.length, 3);
+        for (let i = 0; i < count; i += 1) {
+          const url = state.aiPreviewUrls[i];
+          if (!url) {
+            const slot = document.createElement("div");
+            slot.className = "thumb-placeholder";
+            slot.textContent = `Photo ${i + 1}`;
+            els.aiPreviewGrid.appendChild(slot);
+            continue;
+          }
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "thumb-card";
+          btn.innerHTML = `
+            <img src="${url}" alt="Image IA ${i + 1}">
+            <span class="thumb-label">Photo ${i + 1}</span>
+          `;
+          btn.addEventListener("click", () => openModal(url));
+          els.aiPreviewGrid.appendChild(btn);
+        }
+      }
+
+      function resetProgress() {
+        els.progressBar.style.width = "0%";
+        els.progressLabel.textContent = "0%";
+      }
+
+      function setProgress(percent) {
+        const clamped = Math.max(0, Math.min(100, percent));
+        els.progressBar.style.width = `${clamped}%`;
+        els.progressLabel.textContent = `${Math.round(clamped)}%`;
+      }
+
+      function resetStages() {
+        state.stages = makeStageArray(state.aiFiles.length);
+      }
+
+      function renderStageList() {
+        els.stageList.innerHTML = "";
+        if (!state.aiFiles.length) return;
+
+        for (let i = 0; i < state.aiFiles.length; i += 1) {
+          const stage = state.stages[i] || makeStageState();
+          const item = document.createElement("div");
+          item.className = "stage-item";
+          item.innerHTML = `
+            <p class="stage-item-title">Photo ${i + 1}</p>
+            <div class="stage-tags">
+              <span class="stage-tag ${stage.shake}">Shake (rotation ±0.5, scale 1.01-1.02): ${labelStage(stage.shake)}</span>
+              <span class="stage-tag ${stage.stir}">Stir (gaussien Box-Muller, chunk 65_536): ${labelStage(stage.stir)}</span>
+              <span class="stage-tag ${stage.crush}">Crush (JPEG 0.85 + fallback 0.92): ${labelStage(stage.crush)}</span>
+              <span class="stage-tag ${stage.exif}">Injection EXIF (profil + date/heure actuelles): ${labelStage(stage.exif)}</span>
+            </div>
+          `;
+          els.stageList.appendChild(item);
+        }
+      }
+
+      function labelStage(status) {
+        if (status === "running") return "en cours";
+        if (status === "done") return "fait";
+        if (status === "error") return "erreur";
+        return "attente";
+      }
+
+      function updateStage(index, key, value) {
+        if (!state.stages[index]) return;
+        state.stages[index][key] = value;
+        renderStageList();
+      }
+
+      function renderResultGrid() {
+        els.resultGrid.innerHTML = "";
+        if (!state.aiFiles.length) return;
+
+        for (let i = 0; i < state.aiFiles.length; i += 1) {
+          const output = state.results[i];
+          const meta = state.resultMeta[i];
+          const card = document.createElement("article");
+          card.className = "result-card";
+
+          if (!output || !output.url) {
+            const placeholder = document.createElement("div");
+            placeholder.className = "thumb-placeholder";
+            placeholder.style.aspectRatio = "4 / 5";
+            placeholder.textContent = `Photo ${i + 1} en attente`;
+            card.appendChild(placeholder);
+          } else {
+            const img = document.createElement("img");
+            img.src = output.url;
+            img.alt = `Résultat ${i + 1}`;
+            img.addEventListener("click", () => openModal(output.url));
+            card.appendChild(img);
+          }
+
+          const lines = [];
+          lines.push(`Photo ${i + 1}`);
+          if (output) {
+            lines.push(`Nom simulé iPhone: ${output.filename}`);
+            if (meta) {
+              lines.push(`DateTime: ${meta.dateTime || "—"}`);
+              lines.push(`DateTimeOriginal: ${meta.dateTimeOriginal || "—"}`);
+              lines.push(`GPS: ${formatGps(meta)}`);
+            } else {
+              lines.push("EXIF: lecture en cours...");
+            }
+          } else {
+            lines.push("Aucun résultat pour le moment.");
+          }
+
+          const metaBox = document.createElement("pre");
+          metaBox.className = "result-meta";
+          metaBox.textContent = lines.join("\n");
+          card.appendChild(metaBox);
+
+          els.resultGrid.appendChild(card);
+        }
+      }
+
+      function formatGps(meta) {
+        if (!meta || !meta.gpsPresent) return "absent";
+        if (Number.isFinite(meta.latitude) && Number.isFinite(meta.longitude)) {
+          return `${meta.latitude.toFixed(6)}, ${meta.longitude.toFixed(6)}`;
+        }
+        return "présent";
+      }
+
+      function renderStepState() {
+        const hasTemplate = Boolean(state.templateExif);
+        const aiReady = isValidAiCount(state.aiFiles.length);
+        const done = state.results.length > 0 && state.results.every(Boolean);
+
+        stepChips.forEach((chip) => {
+          const step = Number(chip.getAttribute("data-step-chip"));
+          chip.classList.remove("active", "done");
+          if (step === 1 && hasTemplate) chip.classList.add("done");
+          if (step === 2 && aiReady) chip.classList.add("done");
+          if (step === 3 && done) chip.classList.add("done");
+        });
+
+        if (!hasTemplate) {
+          stepChips[0].classList.add("active");
+        } else if (!aiReady) {
+          stepChips[1].classList.add("active");
+        } else {
+          stepChips[2].classList.add("active");
+        }
+
+        const canRun = hasTemplate && aiReady && !state.running;
+        els.runAllBtn.disabled = !canRun;
+      }
+
+      async function onRunAll() {
+        clearBanner(els.runBanner);
+        const hasTemplate = Boolean(state.templateExif);
+        if (!hasTemplate) {
+          showBanner(els.runBanner, "Crée d'abord le profil EXIF de référence.");
+          return;
+        }
+        if (!isValidAiCount(state.aiFiles.length)) {
+          showBanner(els.runBanner, `Ajoute entre ${MIN_AI_COUNT} et ${MAX_AI_COUNT} images IA.`);
+          return;
+        }
+
+        state.running = true;
+        state.results.forEach((entry) => entry && entry.url && URL.revokeObjectURL(entry.url));
+        state.results = makeNullArray(state.aiFiles.length);
+        state.resultMeta = makeNullArray(state.aiFiles.length);
+        resetStages();
+        resetProgress();
+        renderResultGrid();
+        renderStageList();
+        renderStepState();
+        setBusy(els.runAllBtn, true, "Traitement...");
+
+        try {
+          const count = state.aiFiles.length;
+          const filenameNumbers = new Set();
+
+          for (let i = 0; i < count; i += 1) {
+            setProgress((i / count) * 100);
+            const aiBlob = state.aiFiles[i];
+
+            const disrupted = await disruptWatermark(aiBlob, (stageName, status) => {
+              updateStage(i, stageName, status);
+            });
+
+            updateStage(i, "exif", "running");
+            const exifNow = new Date(Date.now() + (i * 1500));
+            const filename = buildIphoneLikeFilename(filenameNumbers);
+            const injected = await injectExifUsingTemplate(disrupted, state.templateExif, exifNow, filename);
+            const url = URL.createObjectURL(injected);
+            state.results[i] = { blob: injected, url, filename };
+            state.resultMeta[i] = await extractExifPreviewMeta(injected);
+            updateStage(i, "exif", "done");
+            setProgress(((i + 1) / count) * 100);
+            renderResultGrid();
+          }
+
+          showBanner(
+            els.runBanner,
+            "Traitement terminé. Sauvegarde chaque image depuis l'aperçu: appui long -> « Enregistrer dans Photos » (Save to Photos).",
+            "success"
+          );
+        } catch (error) {
+          showBanner(els.runBanner, `Erreur traitement: ${error.message}`);
+        } finally {
+          state.running = false;
+          setBusy(els.runAllBtn, false);
+          renderStepState();
+          renderStageList();
+        }
+      }
+
+      function setBusy(button, busy, label) {
+        if (!button) return;
+        button.disabled = busy;
+        if (busy) {
+          button.dataset.prevLabel = button.textContent;
+          button.innerHTML = `<span class="spinner" aria-hidden="true"></span>${label || "Traitement..."}`;
+          return;
+        }
+        if (button.dataset.prevLabel) {
+          button.textContent = button.dataset.prevLabel;
+          delete button.dataset.prevLabel;
+        }
+      }
+
+      function showBanner(el, message, tone) {
+        el.classList.remove("success", "warn");
+        if (tone === "success") el.classList.add("success");
+        if (tone === "warn") el.classList.add("warn");
+        el.textContent = message;
+        el.classList.add("show");
+      }
+
+      function clearBanner(el) {
+        el.classList.remove("show", "success", "warn");
+        el.textContent = "";
+      }
+
+      function revokeUrls(urls) {
+        urls.forEach((url) => {
+          if (url && url.startsWith("blob:")) {
+            URL.revokeObjectURL(url);
+          }
+        });
+      }
+
+      function openModal(src) {
+        if (!src) return;
+        els.modalImage.src = src;
+        els.imageModal.classList.add("show");
+        els.imageModal.setAttribute("aria-hidden", "false");
+      }
+
+      function closeModal() {
+        els.imageModal.classList.remove("show");
+        els.imageModal.setAttribute("aria-hidden", "true");
+      }
+
+      class GaussianRNG {
+        constructor() {
+          this.spare = null;
+          this.hasSpare = false;
+        }
+
+        next(mean = 0, stdDev = 1) {
+          if (this.hasSpare) {
+            this.hasSpare = false;
+            return this.spare * stdDev + mean;
+          }
+
+          const u1 = Math.random();
+          const u2 = Math.random();
+          const mag = stdDev * Math.sqrt(-2.0 * Math.log(u1));
+          const z0 = mag * Math.cos(2.0 * Math.PI * u2);
+          const z1 = mag * Math.sin(2.0 * Math.PI * u2);
+
+          this.hasSpare = true;
+          this.spare = z1;
+          return z0 * stdDev + mean;
+        }
+      }
+
+      function generateGaussianBatch(size, stdDev) {
+        const rng = new GaussianRNG();
+        const batch = new Float32Array(size);
+        for (let i = 0; i < size; i += 1) {
+          batch[i] = rng.next(0, stdDev);
+        }
+        return batch;
+      }
+
+      const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      async function applyShakeExact(ctx, image, options = DISRUPT_DEFAULT_OPTIONS.shake) {
+        const { width, height } = ctx.canvas;
+        const { rotationRange, scaleRange } = options;
+
+        const angleRad = ((Math.random() * 2 - 1) * (rotationRange * Math.PI)) / 180;
+        const scale = scaleRange[0] + Math.random() * (scaleRange[1] - scaleRange[0]);
+
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.save();
+        ctx.setTransform(
+          scale * cos,
+          scale * sin,
+          -scale * sin,
+          scale * cos,
+          centerX - centerX * scale * cos + centerY * scale * sin,
+          centerY - centerX * scale * sin - centerY * scale * cos
+        );
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(image, 0, 0, width, height);
+        ctx.restore();
+        await nextTick();
+      }
+
+      async function applyStirExact(ctx, options = DISRUPT_DEFAULT_OPTIONS.stir) {
+        const { width, height } = ctx.canvas;
+        const { noiseAmplitude } = options;
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        const pixelCount = width * height;
+
+        const stdDev = noiseAmplitude / 3;
+        const noiseR = generateGaussianBatch(pixelCount, stdDev);
+        const noiseG = generateGaussianBatch(pixelCount, stdDev);
+        const noiseB = generateGaussianBatch(pixelCount, stdDev);
+
+        const pixelsPerChunk = 65_536;
+        let noiseIdx = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = Math.max(0, Math.min(255, data[i] + noiseR[noiseIdx]));
+          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noiseG[noiseIdx]));
+          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noiseB[noiseIdx]));
+          noiseIdx += 1;
+          if (noiseIdx % pixelsPerChunk === 0) {
+            await nextTick();
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        await nextTick();
+      }
+
+      async function applyCrushExact(canvas, options = DISRUPT_DEFAULT_OPTIONS.crush) {
+        const { quality } = options;
+        const clamped = Math.max(0, Math.min(1, quality));
+        try {
+          return canvas.toDataURL("image/jpeg", clamped);
+        } catch (_) {
+          return canvas.toDataURL("image/jpeg", 0.92);
+        }
+      }
+
+      async function disruptWatermark(imageBlob, onStageUpdate) {
+        const image = await loadImageFromBlob(imageBlob);
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth || image.width;
+        canvas.height = image.naturalHeight || image.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas indisponible.");
+
+        let activeStage = "shake";
+        try {
+          onStageUpdate && onStageUpdate("shake", "running");
+          await applyShakeExact(ctx, image, DISRUPT_DEFAULT_OPTIONS.shake);
+          onStageUpdate && onStageUpdate("shake", "done");
+
+          activeStage = "stir";
+          onStageUpdate && onStageUpdate("stir", "running");
+          await applyStirExact(ctx, DISRUPT_DEFAULT_OPTIONS.stir);
+          onStageUpdate && onStageUpdate("stir", "done");
+
+          activeStage = "crush";
+          onStageUpdate && onStageUpdate("crush", "running");
+          const dataUrl = await applyCrushExact(canvas, DISRUPT_DEFAULT_OPTIONS.crush);
+          onStageUpdate && onStageUpdate("crush", "done");
+          return dataURLToBlob(dataUrl);
+        } catch (error) {
+          if (onStageUpdate && activeStage) {
+            onStageUpdate(activeStage, "error");
+          }
+          throw error;
+        }
+      }
+
+      function sanitizeTemplateExif(rawExif) {
+        const output = {
+          "0th": {},
+          "Exif": {},
+          "GPS": {},
+          "Interop": {},
+          "1st": {},
+          "thumbnail": null
+        };
+        const ifds = ["0th", "Exif", "GPS", "Interop", "1st"];
+        ifds.forEach((ifd) => {
+          const src = rawExif && rawExif[ifd] ? rawExif[ifd] : {};
+          Object.keys(src).forEach((tag) => {
+            const numericTag = Number(tag);
+            if (!isExifTagSupported(ifd, numericTag)) return;
+            output[ifd][numericTag] = src[tag];
+          });
+        });
+
+        output["1st"] = {};
+        output["thumbnail"] = null;
+        delete output["0th"][513];
+        delete output["0th"][514];
+        return output;
+      }
+
+      function hasEnoughTemplateData(exifDict) {
+        if (!exifDict || typeof exifDict !== "object") return false;
+        const hasMake = Boolean(exifDict["0th"] && exifDict["0th"][window.piexif.ImageIFD.Make]);
+        const hasModel = Boolean(exifDict["0th"] && exifDict["0th"][window.piexif.ImageIFD.Model]);
+        const hasGps = Boolean(exifDict["GPS"] && Object.keys(exifDict["GPS"]).length > 0);
+        return hasMake || hasModel || hasGps;
+      }
+
+      function buildTemplateInfo(exifDict, sourceName) {
+        const make = exifDict?.["0th"]?.[window.piexif.ImageIFD.Make] || "";
+        const model = exifDict?.["0th"]?.[window.piexif.ImageIFD.Model] || "";
+        const gpsCoords = extractGpsCoordinates(exifDict?.["GPS"] || null);
+        return {
+          sourceName: sourceName || "photo.jpg",
+          savedAt: new Date().toLocaleString("fr-FR"),
+          makeModel: `${String(make || "").trim()} ${String(model || "").trim()}`.trim() || "—",
+          gps: gpsCoords && Number.isFinite(gpsCoords.latitude) && Number.isFinite(gpsCoords.longitude)
+            ? `${gpsCoords.latitude.toFixed(6)}, ${gpsCoords.longitude.toFixed(6)}`
+            : "absent"
+        };
+      }
+
+      async function injectExifUsingTemplate(targetBlob, templateExif, nowDate, imageFilename) {
+        const exifDict = deepCloneExif(templateExif);
+        if (!exifDict["0th"]) exifDict["0th"] = {};
+        if (!exifDict["Exif"]) exifDict["Exif"] = {};
+        if (!exifDict["GPS"]) exifDict["GPS"] = {};
+        if (!exifDict["Interop"]) exifDict["Interop"] = {};
+        exifDict["1st"] = {};
+        exifDict["thumbnail"] = null;
+        delete exifDict["0th"][513];
+        delete exifDict["0th"][514];
+
+        const nowExif = getExifDateTime(nowDate);
+        const tzOffset = getExifUtcOffset(nowDate);
+
+        setExifTagSafe(exifDict, "0th", window.piexif.ImageIFD.DateTime, nowExif, false);
+        setExifTagSafe(exifDict, "0th", window.piexif.ImageIFD.Orientation, 1, false);
+        setExifTagSafe(exifDict, "Exif", window.piexif.ExifIFD.DateTimeOriginal, nowExif, false);
+        setExifTagSafe(exifDict, "Exif", window.piexif.ExifIFD.DateTimeDigitized, nowExif, false);
+        setExifTagSafe(exifDict, "Exif", (window.piexif.ExifIFD.OffsetTime || 36880), tzOffset, false);
+        setExifTagSafe(exifDict, "Exif", (window.piexif.ExifIFD.OffsetTimeOriginal || 36881), tzOffset, false);
+        setExifTagSafe(exifDict, "Exif", (window.piexif.ExifIFD.OffsetTimeDigitized || 36882), tzOffset, false);
+
+        setExifTagSafe(exifDict, "0th", window.piexif.ImageIFD.DocumentName, imageFilename, false);
+        setExifTagSafe(exifDict, "0th", window.piexif.ImageIFD.ImageDescription, imageFilename, false);
+
+        applyRandomizedCaptureParams(exifDict, templateExif);
+
+        const jpegDataUrl = await fileToJpegDataUrl(targetBlob);
+        const cleaned = sanitizeTemplateExif(exifDict);
+        const exifBytes = window.piexif.dump(cleaned);
+        const inserted = window.piexif.insert(exifBytes, jpegDataUrl);
+        return dataURLToBlob(inserted);
+      }
+
+      function applyRandomizedCaptureParams(targetExif, sourceExif) {
+        const srcExif = sourceExif?.["Exif"] || {};
+        const exifIfd = window.piexif.ExifIFD;
+
+        const baseIso = toNumber(srcExif[exifIfd.ISOSpeedRatings]) || 640;
+        const baseExposure = rationalToNumber(srcExif[exifIfd.ExposureTime]) || (1 / 60);
+        const baseF = rationalToNumber(srcExif[exifIfd.FNumber]) || 2.2;
+        const baseBias = signedRationalToNumber(srcExif[exifIfd.ExposureBiasValue]) || 0;
+
+        const iso = randomIsoNear(baseIso);
+        const exposure = clamp(baseExposure * Math.pow(2, randomBetween(-0.8, 0.8)), 1 / 4000, 1 / 8);
+        const fNumber = clamp(baseF + randomBetween(-0.25, 0.25), 1.4, 4.0);
+        const bias = clamp(baseBias + randomBetween(-0.34, 0.34), -0.7, 0.7);
+
+        setExifTagSafe(targetExif, "Exif", exifIfd.ISOSpeedRatings, Math.round(iso), false);
+        setExifTagSafe(targetExif, "Exif", exifIfd.ExposureTime, toUnsignedRational(exposure, 1_000_000), false);
+        setExifTagSafe(targetExif, "Exif", exifIfd.FNumber, toUnsignedRational(fNumber, 100), false);
+        setExifTagSafe(targetExif, "Exif", exifIfd.ExposureBiasValue, toSignedRational(bias, 1000), false);
+
+        if (isExifTagSupported("Exif", exifIfd.ShutterSpeedValue)) {
+          const shutter = Math.log2(1 / exposure);
+          setExifTagSafe(targetExif, "Exif", exifIfd.ShutterSpeedValue, toSignedRational(shutter, 1000), false);
+        }
+      }
+
+      function randomIsoNear(baseIso) {
+        const ladder = [50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000];
+        let nearestIdx = 0;
+        let nearestDiff = Infinity;
+        ladder.forEach((iso, idx) => {
+          const diff = Math.abs(iso - baseIso);
+          if (diff < nearestDiff) {
+            nearestDiff = diff;
+            nearestIdx = idx;
+          }
+        });
+        const jitter = Math.floor(randomBetween(-2, 3));
+        const nextIdx = clamp(nearestIdx + jitter, 0, ladder.length - 1);
+        return ladder[nextIdx];
+      }
+
+      function toNumber(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function rationalToNumber(value) {
+        if (!Array.isArray(value) || value.length !== 2) return null;
+        const n = Number(value[0]);
+        const d = Number(value[1]);
+        if (!Number.isFinite(n) || !Number.isFinite(d) || d === 0) return null;
+        return n / d;
+      }
+
+      function signedRationalToNumber(value) {
+        return rationalToNumber(value);
+      }
+
+      function toUnsignedRational(value, precision) {
+        const d = Math.max(1, Math.round(precision || 1000));
+        const n = Math.max(0, Math.round(value * d));
+        return [n, d];
+      }
+
+      function toSignedRational(value, precision) {
+        const d = Math.max(1, Math.round(precision || 1000));
+        const n = Math.round(value * d);
+        return [n, d];
+      }
+
+      function randomBetween(min, max) {
+        return min + (Math.random() * (max - min));
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function deepCloneExif(dict) {
+        return JSON.parse(JSON.stringify(dict || {}));
+      }
+
+      function setExifTagSafe(exifDict, ifdName, tagId, value, onlyIfMissing) {
+        if (!isExifTagSupported(ifdName, tagId)) return false;
+        const current = exifDict?.[ifdName]?.[tagId];
+        if (onlyIfMissing && current !== undefined && current !== null && current !== "") {
+          return true;
+        }
+        exifDict[ifdName][tagId] = value;
+        return true;
+      }
+
+      function isExifTagSupported(ifdName, tagId) {
+        if (!Number.isFinite(Number(tagId))) return false;
+        const tags = window.piexif?.TAGS || window.piexif?.Tags;
+        const ifdTags = tags && tags[ifdName];
+        if (!ifdTags) return false;
+        return Object.prototype.hasOwnProperty.call(ifdTags, String(tagId));
+      }
+
+      function buildIphoneLikeFilename(usedSet) {
+        const start = Date.now() % 10000;
+        for (let i = 0; i < 10000; i += 1) {
+          const candidate = `IMG_${String((start + i) % 10000).padStart(4, "0")}.JPG`;
+          if (!usedSet.has(candidate)) {
+            usedSet.add(candidate);
+            return candidate;
+          }
+        }
+        const fallback = `IMG_${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}.JPG`;
+        usedSet.add(fallback);
+        return fallback;
+      }
+
+      function getExifDateTime(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        const h = String(date.getHours()).padStart(2, "0");
+        const min = String(date.getMinutes()).padStart(2, "0");
+        const s = String(date.getSeconds()).padStart(2, "0");
+        return `${y}:${m}:${d} ${h}:${min}:${s}`;
+      }
+
+      function getExifUtcOffset(date) {
+        const offsetMinutes = -date.getTimezoneOffset();
+        const sign = offsetMinutes >= 0 ? "+" : "-";
+        const absMinutes = Math.abs(offsetMinutes);
+        const hours = String(Math.floor(absMinutes / 60)).padStart(2, "0");
+        const minutes = String(absMinutes % 60).padStart(2, "0");
+        return `${sign}${hours}:${minutes}`;
+      }
+
+      async function extractExifPreviewMeta(blob) {
+        try {
+          const dataUrl = await fileToDataURL(blob);
+          const exif = window.piexif.load(dataUrl);
+          const dateTime = exif?.["0th"]?.[window.piexif.ImageIFD.DateTime] || "";
+          const dateTimeOriginal = exif?.["Exif"]?.[window.piexif.ExifIFD.DateTimeOriginal] || "";
+          const gps = exif?.["GPS"] || null;
+          const coords = gps ? extractGpsCoordinates(gps) : null;
+          return {
+            dateTime,
+            dateTimeOriginal,
+            gpsPresent: Boolean(gps && Object.keys(gps).length),
+            latitude: coords ? coords.latitude : null,
+            longitude: coords ? coords.longitude : null
+          };
+        } catch (_) {
+          return {
+            dateTime: "",
+            dateTimeOriginal: "",
+            gpsPresent: false,
+            latitude: null,
+            longitude: null
+          };
+        }
+      }
+
+      function extractGpsCoordinates(gpsDict) {
+        if (!gpsDict) return null;
+        const latDms = gpsDict[window.piexif.GPSIFD.GPSLatitude];
+        const latRef = gpsDict[window.piexif.GPSIFD.GPSLatitudeRef];
+        const lonDms = gpsDict[window.piexif.GPSIFD.GPSLongitude];
+        const lonRef = gpsDict[window.piexif.GPSIFD.GPSLongitudeRef];
+        return {
+          latitude: dmsToDecimal(latDms, latRef),
+          longitude: dmsToDecimal(lonDms, lonRef)
+        };
+      }
+
+      function dmsToDecimal(dms, ref) {
+        if (!Array.isArray(dms) || dms.length < 3) return null;
+        const deg = rationalToNumber(dms[0]);
+        const min = rationalToNumber(dms[1]);
+        const sec = rationalToNumber(dms[2]);
+        if (![deg, min, sec].every(Number.isFinite)) return null;
+        let value = deg + (min / 60) + (sec / 3600);
+        const hemisphere = String(ref || "").toUpperCase();
+        if (hemisphere === "S" || hemisphere === "W") value *= -1;
+        return value;
+      }
+
+      function isJpegFile(file) {
+        return /image\/jpeg/i.test(file.type) || /\.jpe?g$/i.test(file.name);
+      }
+
+      function fileToObjectURL(file) {
+        return Promise.resolve(URL.createObjectURL(file));
+      }
+
+      function fileToDataURL(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function fileToJpegDataUrl(fileOrBlob) {
+        const image = await loadImageFromBlob(fileOrBlob);
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth || image.width;
+        canvas.height = image.naturalHeight || image.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas indisponible.");
+        ctx.drawImage(image, 0, 0);
+        return canvas.toDataURL("image/jpeg", 0.95);
+      }
+
+      function dataURLToBlob(dataUrl) {
+        const parts = dataUrl.split(",");
+        const meta = parts[0];
+        const b64 = parts[1];
+        const mime = (meta.match(/data:(.*?);base64/) || [])[1] || "image/jpeg";
+        const binary = atob(b64);
+        const len = binary.length;
+        const arr = new Uint8Array(len);
+        for (let i = 0; i < len; i += 1) {
+          arr[i] = binary.charCodeAt(i);
+        }
+        return new Blob([arr], { type: mime });
+      }
+
+      function loadImageFromURL(url) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("Image illisible."));
+          img.src = url;
+        });
+      }
+
+      function loadImageFromBlob(blob) {
+        const url = URL.createObjectURL(blob);
+        return loadImageFromURL(url).then((img) => {
+          URL.revokeObjectURL(url);
+          return img;
+        });
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
