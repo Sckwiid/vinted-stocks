@@ -172,6 +172,12 @@ select:focus {
   color: #fff;
 }
 
+.seller-badges {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
 .seller-anthony {
   background: var(--anthony);
 }

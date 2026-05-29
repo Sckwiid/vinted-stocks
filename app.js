@@ -2,6 +2,9 @@ const STORAGE_DATA_KEY = "vinted_stocks_data_v1";
 const STORAGE_SESSION_KEY = "vinted_stocks_session_v1";
 const DEFAULT_LOW_THRESHOLD = 3;
 const DEFAULT_SYNC_PATH = "vinted-stocks/shared/products";
+const SELLER_ANTHONY = "anthony";
+const SELLER_JULIEN = "julien";
+const SELLER_BOTH = "both";
 
 const USERS = {
   anthony: {
@@ -184,7 +187,7 @@ async function handleAddProduct(event) {
   const name = String(formData.get("name") || "").trim();
   const totalStock = Math.max(0, Number(formData.get("totalStock") || 0));
   const listedQuantity = Math.max(0, Number(formData.get("listedQuantity") || 0));
-  const listedBy = String(formData.get("listedBy") || "").trim();
+  const listedBy = normalizeListedByValue(String(formData.get("listedBy") || "").trim().toLowerCase());
   const lowThreshold = Math.max(0, Number(formData.get("lowThreshold") || DEFAULT_LOW_THRESHOLD));
   const articleLink = String(formData.get("articleLink") || "").trim();
   const photoUrl = String(formData.get("photoUrl") || "").trim();
@@ -201,7 +204,7 @@ async function handleAddProduct(event) {
   }
 
   if (listedQuantity > 0 && !listedBy) {
-    showStatus("Choisis Anthony ou Julien pour un article en vente.", "error");
+    showStatus("Choisis Anthony, Julien ou Nous deux pour un article en vente.", "error");
     return;
   }
 
@@ -286,7 +289,7 @@ async function handleTableSubmit(event) {
   }
 
   if (action === "updateSale") {
-    const seller = String(form.querySelector("select[name='saleSeller']")?.value || "").trim();
+    const seller = normalizeListedByValue(String(form.querySelector("select[name='saleSeller']")?.value || "").trim().toLowerCase());
     const listedQuantity = Math.max(0, Number(form.querySelector("input[name='saleQty']")?.value || 0));
 
     if (listedQuantity > product.totalStock) {
@@ -295,7 +298,7 @@ async function handleTableSubmit(event) {
     }
 
     if (listedQuantity > 0 && !seller) {
-      showStatus("Choisis Anthony ou Julien pour la mise en vente.", "error");
+      showStatus("Choisis Anthony, Julien ou Nous deux pour la mise en vente.", "error");
       return;
     }
 
@@ -435,6 +438,7 @@ function renderTable() {
                   <option value="" ${product.listedBy ? "" : "selected"}>Personne</option>
                   <option value="anthony" ${product.listedBy === "anthony" ? "selected" : ""}>Anthony</option>
                   <option value="julien" ${product.listedBy === "julien" ? "selected" : ""}>Julien</option>
+                  <option value="both" ${product.listedBy === "both" ? "selected" : ""}>Nous deux</option>
                 </select>
                 <input class="tiny" type="number" min="0" name="saleQty" value="${product.listedQuantity}" required>
                 <button class="btn btn-outline btn-small" type="submit">Maj vente</button>
@@ -451,10 +455,10 @@ function renderTable() {
 
 function getVisibleProducts() {
   const filtered = state.products.filter((product) => {
-    const haystack = `${product.name} ${product.articleLink} ${product.listedBy}`.toLowerCase();
+    const haystack = `${product.name} ${product.articleLink} ${getSellerSearchTokens(product.listedBy)}`.toLowerCase();
 
     const matchesSearch = !state.search || haystack.includes(state.search);
-    const matchesSeller = state.sellerFilter === "all" || product.listedBy === state.sellerFilter;
+    const matchesSeller = listedByMatchesFilter(product.listedBy, state.sellerFilter);
     const matchesLow = !state.lowOnly || isLowStock(product);
 
     return matchesSearch && matchesSeller && matchesLow;
@@ -495,11 +499,15 @@ function isLowStock(product) {
 }
 
 function renderSellerBadge(sellerKey) {
-  if (sellerKey === "anthony") {
+  if (sellerKey === SELLER_BOTH) {
+    return '<div class="seller-badges"><span class="seller-badge seller-anthony">Anthony</span><span class="seller-badge seller-julien">Julien</span></div>';
+  }
+
+  if (sellerKey === SELLER_ANTHONY) {
     return '<span class="seller-badge seller-anthony">Anthony</span>';
   }
 
-  if (sellerKey === "julien") {
+  if (sellerKey === SELLER_JULIEN) {
     return '<span class="seller-badge seller-julien">Julien</span>';
   }
 
@@ -547,7 +555,7 @@ function normalizeProduct(rawProduct) {
     name: String(rawProduct.name || "Produit sans nom").trim(),
     totalStock,
     listedQuantity: Math.min(listedQuantity, totalStock),
-    listedBy: rawProduct.listedBy === "anthony" || rawProduct.listedBy === "julien" ? rawProduct.listedBy : "",
+    listedBy: normalizeListedByValue(rawProduct.listedBy),
     lowThreshold: Math.max(0, Number(rawProduct.lowThreshold || DEFAULT_LOW_THRESHOLD)),
     articleLink: String(rawProduct.articleLink || "").trim(),
     photo: String(rawProduct.photo || "").trim(),
@@ -555,6 +563,79 @@ function normalizeProduct(rawProduct) {
     createdAt: String(rawProduct.createdAt || new Date().toISOString()),
     updatedAt: String(rawProduct.updatedAt || rawProduct.createdAt || new Date().toISOString())
   };
+}
+
+function normalizeListedByValue(value) {
+  if (value === SELLER_ANTHONY || value === SELLER_JULIEN || value === SELLER_BOTH) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const normalizedValues = value.map((item) => String(item).trim().toLowerCase());
+    const hasAnthony = normalizedValues.includes(SELLER_ANTHONY);
+    const hasJulien = normalizedValues.includes(SELLER_JULIEN);
+    if (hasAnthony && hasJulien) {
+      return SELLER_BOTH;
+    }
+    if (hasAnthony) {
+      return SELLER_ANTHONY;
+    }
+    if (hasJulien) {
+      return SELLER_JULIEN;
+    }
+    return "";
+  }
+
+  if (typeof value === "string") {
+    const lower = value.trim().toLowerCase();
+    if (lower === SELLER_ANTHONY) {
+      return SELLER_ANTHONY;
+    }
+    if (lower === SELLER_JULIEN) {
+      return SELLER_JULIEN;
+    }
+    if (lower === SELLER_BOTH || lower === "nous deux") {
+      return SELLER_BOTH;
+    }
+    if (lower === `${SELLER_ANTHONY},${SELLER_JULIEN}` || lower === `${SELLER_JULIEN},${SELLER_ANTHONY}`) {
+      return SELLER_BOTH;
+    }
+    if (lower === `${SELLER_ANTHONY} ${SELLER_JULIEN}` || lower === `${SELLER_JULIEN} ${SELLER_ANTHONY}`) {
+      return SELLER_BOTH;
+    }
+  }
+
+  return "";
+}
+
+function getSellerSearchTokens(listedBy) {
+  if (listedBy === SELLER_BOTH) {
+    return `${SELLER_ANTHONY} ${SELLER_JULIEN} nous deux`;
+  }
+  if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN) {
+    return listedBy;
+  }
+  return "";
+}
+
+function listedByMatchesFilter(listedBy, filterValue) {
+  if (filterValue === "all") {
+    return true;
+  }
+
+  if (filterValue === SELLER_BOTH) {
+    return listedBy === SELLER_BOTH;
+  }
+
+  if (filterValue === SELLER_ANTHONY) {
+    return listedBy === SELLER_ANTHONY || listedBy === SELLER_BOTH;
+  }
+
+  if (filterValue === SELLER_JULIEN) {
+    return listedBy === SELLER_JULIEN || listedBy === SELLER_BOTH;
+  }
+
+  return listedBy === filterValue;
 }
 
 function persistProductsCache() {
