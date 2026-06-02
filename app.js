@@ -352,6 +352,11 @@ async function handleTableClick(event) {
     return;
   }
 
+  if (action === "soldItem") {
+    await markProductSold(productId);
+    return;
+  }
+
   if (action === "edit") {
     state.editingProductId = productId;
     renderTable();
@@ -438,27 +443,38 @@ async function adjustProductStock(productId, delta) {
     return;
   }
 
-  if (delta !== 1 && delta !== -1) {
+  if (delta !== 1) {
     return;
   }
 
   const nextTotalStock = product.totalStock + delta;
 
-  if (nextTotalStock < product.listedQuantity) {
-    showStatus("Impossible: le stock total ne peut pas etre inferieur a la quantite en vente.", "error");
-    return;
-  }
-
-  if (nextTotalStock < 0) {
-    showStatus("Impossible: le stock ne peut pas etre negatif.", "error");
-    return;
-  }
-
   product.totalStock = nextTotalStock;
   product.updatedAt = new Date().toISOString();
   persistProductsCache();
   await syncUpsertProduct(product);
-  showStatus(`${delta > 0 ? "Stock ajoute" : "Stock retire"} pour ${product.name}.`, "info");
+  showStatus(`Stock ajoute pour ${product.name}.`, "info");
+  render();
+}
+
+async function markProductSold(productId) {
+  const product = state.products.find((item) => item.id === productId);
+  if (!product) {
+    showStatus("Produit introuvable.", "error");
+    return;
+  }
+
+  if (product.listedQuantity <= 0) {
+    showStatus("Aucun article en vente a marquer comme vendu.", "error");
+    return;
+  }
+
+  product.listedQuantity -= 1;
+  product.listedBy = product.listedQuantity > 0 ? product.listedBy : "";
+  product.updatedAt = new Date().toISOString();
+  persistProductsCache();
+  await syncUpsertProduct(product);
+  showStatus(`Vendu: 1 retire de la quantite en vente pour ${product.name}.`, "info");
   render();
 }
 
@@ -556,7 +572,7 @@ function renderTable() {
             <div class="actions">
               <div class="stock-buttons">
                 <button class="btn btn-main btn-small" type="button" data-action="adjustStock" data-delta="1" data-id="${product.id}">+ Stock</button>
-                <button class="btn btn-outline btn-small" type="button" data-action="adjustStock" data-delta="-1" data-id="${product.id}" ${product.totalStock <= product.listedQuantity ? "disabled" : ""}>- Stock</button>
+                <button class="btn btn-outline btn-small" type="button" data-action="soldItem" data-id="${product.id}" ${product.listedQuantity <= 0 ? "disabled" : ""}>Vendu</button>
               </div>
 
               <form class="inline-form" data-action="updateSale" data-id="${product.id}">
