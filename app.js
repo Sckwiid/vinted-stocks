@@ -469,13 +469,83 @@ async function markProductSold(productId) {
     return;
   }
 
+  const soldBy = requestSoldBy(product);
+  if (!soldBy) {
+    return;
+  }
+
   product.listedQuantity -= 1;
-  product.listedBy = product.listedQuantity > 0 ? product.listedBy : "";
+  product.listedBy = removeSellerTagAfterSale(product.listedBy, soldBy, product.listedQuantity);
   product.updatedAt = new Date().toISOString();
   persistProductsCache();
   await syncUpsertProduct(product);
-  showStatus(`Vendu: 1 retire de la quantite en vente pour ${product.name}.`, "info");
+  showStatus(`Vendu par ${getSellerDisplayName(soldBy)}: 1 retire de la quantite en vente pour ${product.name}.`, "info");
   render();
+}
+
+function requestSoldBy(product) {
+  const taggedSellers = getListedSellers(product.listedBy);
+  const availableSellers = taggedSellers.length > 0 ? taggedSellers : [SELLER_ANTHONY, SELLER_JULIEN];
+
+  const defaultSeller = availableSellers[0];
+  const answer = window.prompt(
+    `Qui l'a vendu ? Tape ${availableSellers.join(" ou ")}.`,
+    defaultSeller
+  );
+
+  if (answer === null) {
+    return "";
+  }
+
+  const soldBy = normalizeSoldByValue(answer);
+
+  if (!soldBy || !availableSellers.includes(soldBy)) {
+    showStatus("Ce vendeur n'est pas marque en vente pour cet article.", "error");
+    return "";
+  }
+
+  return soldBy;
+}
+
+function normalizeSoldByValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === SELLER_ANTHONY || normalized === "a") {
+    return SELLER_ANTHONY;
+  }
+  if (normalized === SELLER_JULIEN || normalized === "j") {
+    return SELLER_JULIEN;
+  }
+  return "";
+}
+
+function getListedSellers(listedBy) {
+  if (listedBy === SELLER_BOTH) {
+    return [SELLER_ANTHONY, SELLER_JULIEN];
+  }
+  if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN) {
+    return [listedBy];
+  }
+  return [];
+}
+
+function removeSellerTagAfterSale(listedBy, soldBy, remainingListedQuantity) {
+  if (remainingListedQuantity <= 0) {
+    return "";
+  }
+
+  if (listedBy === SELLER_BOTH && soldBy === SELLER_ANTHONY) {
+    return SELLER_JULIEN;
+  }
+
+  if (listedBy === SELLER_BOTH && soldBy === SELLER_JULIEN) {
+    return SELLER_ANTHONY;
+  }
+
+  if (listedBy === soldBy) {
+    return "";
+  }
+
+  return listedBy;
 }
 
 function render() {
@@ -706,6 +776,16 @@ function renderSellerBadge(sellerKey) {
   }
 
   return '<span class="seller-badge seller-none">Personne</span>';
+}
+
+function getSellerDisplayName(sellerKey) {
+  if (sellerKey === SELLER_ANTHONY) {
+    return "Anthony";
+  }
+  if (sellerKey === SELLER_JULIEN) {
+    return "Julien";
+  }
+  return "Personne";
 }
 
 function normalizeProductsFromRemote(raw) {
