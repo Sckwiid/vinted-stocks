@@ -22,6 +22,9 @@ const USERS = {
 const state = {
   products: [],
   user: null,
+  view: "home",
+  selectedProductId: null,
+  selectedImageIndex: 0,
   editingProductId: null,
   search: "",
   sellerFilter: "all",
@@ -45,6 +48,12 @@ const refs = {
   loginError: document.getElementById("loginError"),
   sessionBadge: document.getElementById("sessionBadge"),
   syncBadge: document.getElementById("syncBadge"),
+  goAddBtn: document.getElementById("goAddBtn"),
+  homeView: document.getElementById("homeView"),
+  addView: document.getElementById("addView"),
+  detailView: document.getElementById("detailView"),
+  detailBody: document.getElementById("detailBody"),
+  backHomeFromAdd: document.getElementById("backHomeFromAdd"),
   logoutBtn: document.getElementById("logoutBtn"),
   addProductForm: document.getElementById("addProductForm"),
   searchInput: document.getElementById("searchInput"),
@@ -76,6 +85,12 @@ async function init() {
 function bindEvents() {
   refs.loginForm.addEventListener("submit", handleLogin);
   refs.logoutBtn.addEventListener("click", handleLogout);
+  refs.goAddBtn.addEventListener("click", () => {
+    showView("add");
+  });
+  refs.backHomeFromAdd.addEventListener("click", () => {
+    showView("home");
+  });
   refs.addProductForm.addEventListener("submit", handleAddProduct);
 
   refs.searchInput.addEventListener("input", (event) => {
@@ -113,12 +128,16 @@ function bindEvents() {
     renderTable();
   });
 
-  refs.productsBody.addEventListener("submit", (event) => {
-    void handleTableSubmit(event);
-  });
-
   refs.productsBody.addEventListener("click", (event) => {
     void handleTableClick(event);
+  });
+
+  refs.detailBody.addEventListener("submit", (event) => {
+    void handleDetailSubmit(event);
+  });
+
+  refs.detailBody.addEventListener("click", (event) => {
+    void handleDetailClick(event);
   });
 }
 
@@ -196,6 +215,14 @@ function handleLogout() {
   render();
 }
 
+function showView(view, productId = null) {
+  state.view = view;
+  state.selectedProductId = productId;
+  state.selectedImageIndex = 0;
+  state.editingProductId = null;
+  render();
+}
+
 async function handleAddProduct(event) {
   event.preventDefault();
 
@@ -212,8 +239,13 @@ async function handleAddProduct(event) {
   const listedBy = normalizeListedByValue(String(formData.get("listedBy") || "").trim().toLowerCase());
   const lowThreshold = Math.max(0, Number(formData.get("lowThreshold") || DEFAULT_LOW_THRESHOLD));
   const articleLink = String(formData.get("articleLink") || "").trim();
-  const photoUrl = String(formData.get("photoUrl") || "").trim();
-  const photoFile = formData.get("photoFile");
+  let images = [];
+
+  try {
+    images = await collectImagesFromForm(formData, "imageUrls", "imageFiles");
+  } catch {
+    return;
+  }
 
   if (!name) {
     showStatus("Le nom du produit est obligatoire.", "error");
@@ -235,17 +267,6 @@ async function handleAddProduct(event) {
     return;
   }
 
-  let photo = photoUrl;
-
-  if (photoFile instanceof File && photoFile.size > 0) {
-    try {
-      photo = await fileToDataUrl(photoFile);
-    } catch {
-      showStatus("Impossible de lire la photo importee.", "error");
-      return;
-    }
-  }
-
   const now = new Date().toISOString();
 
   const product = {
@@ -256,7 +277,9 @@ async function handleAddProduct(event) {
     listedBy: listedQuantity > 0 ? listedBy : "",
     lowThreshold,
     articleLink,
-    photo,
+    photo: images[0] || "",
+    images,
+    saleHistory: [],
     createdBy: state.user.username,
     createdAt: now,
     updatedAt: now
@@ -271,70 +294,7 @@ async function handleAddProduct(event) {
   form.elements.listedQuantity.value = "0";
   form.elements.lowThreshold.value = String(DEFAULT_LOW_THRESHOLD);
   showStatus("Produit ajoute.", "info");
-  render();
-}
-
-async function handleTableSubmit(event) {
-  event.preventDefault();
-
-  const form = event.target;
-  const productId = form.dataset.id;
-  const action = form.dataset.action;
-
-  if (!productId || !action) {
-    return;
-  }
-
-  const product = state.products.find((item) => item.id === productId);
-
-  if (!product) {
-    showStatus("Produit introuvable.", "error");
-    return;
-  }
-
-  if (action === "updateSale") {
-    const seller = normalizeListedByValue(String(form.querySelector("select[name='saleSeller']")?.value || "").trim().toLowerCase());
-    const listedQuantity = Math.max(0, Number(form.querySelector("input[name='saleQty']")?.value || 0));
-
-    if (listedQuantity > product.totalStock) {
-      showStatus("La quantite en vente depasse le stock total.", "error");
-      return;
-    }
-
-    if (listedQuantity > 0 && !seller) {
-      showStatus("Choisis Anthony, Julien ou Nous deux pour la mise en vente.", "error");
-      return;
-    }
-
-    product.listedQuantity = listedQuantity;
-    product.listedBy = listedQuantity > 0 ? seller : "";
-    product.updatedAt = new Date().toISOString();
-    persistProductsCache();
-    await syncUpsertProduct(product);
-    showStatus(`Mise en vente mise a jour pour ${product.name}.`, "info");
-    render();
-    return;
-  }
-
-  if (action === "editProduct") {
-    const updatedProduct = buildEditedProduct(product, form);
-    if (!updatedProduct) {
-      return;
-    }
-
-    Object.assign(product, updatedProduct, {
-      id: product.id,
-      createdBy: product.createdBy,
-      createdAt: product.createdAt,
-      updatedAt: new Date().toISOString()
-    });
-
-    persistProductsCache();
-    await syncUpsertProduct(product);
-    state.editingProductId = null;
-    showStatus(`Article modifie: ${product.name}.`, "info");
-    render();
-  }
+  showView("home");
 }
 
 async function handleTableClick(event) {
@@ -358,8 +318,7 @@ async function handleTableClick(event) {
   }
 
   if (action === "edit") {
-    state.editingProductId = productId;
-    renderTable();
+    showView("detail", productId);
     return;
   }
 
@@ -390,15 +349,93 @@ async function handleTableClick(event) {
   render();
 }
 
-function buildEditedProduct(product, form) {
+async function handleDetailSubmit(event) {
+  event.preventDefault();
+
+  const form = event.target;
+  const productId = form.dataset.id;
+  const action = form.dataset.action;
+  const product = state.products.find((item) => item.id === productId);
+
+  if (!product) {
+    showStatus("Produit introuvable.", "error");
+    return;
+  }
+
+  if (action === "saveDetailProduct") {
+    const updatedProduct = await buildDetailProductUpdate(product, form);
+    if (!updatedProduct) {
+      return;
+    }
+
+    Object.assign(product, updatedProduct, {
+      id: product.id,
+      createdBy: product.createdBy,
+      createdAt: product.createdAt,
+      updatedAt: new Date().toISOString()
+    });
+
+    persistProductsCache();
+    await syncUpsertProduct(product);
+    showStatus(`Article modifie: ${product.name}.`, "info");
+    render();
+    return;
+  }
+
+  if (action === "recordSale") {
+    const salePrice = parseSalePrice(form.querySelector("input[name='salePrice']")?.value || "");
+    if (salePrice === null) {
+      showStatus("Indique un prix de vente valide.", "error");
+      return;
+    }
+
+    await markProductSold(product.id, salePrice);
+  }
+}
+
+async function handleDetailClick(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const action = button.dataset.action;
+
+  if (action === "backHome") {
+    showView("home");
+    return;
+  }
+
+  if (action === "selectImage") {
+    state.selectedImageIndex = Number(button.dataset.index || 0);
+    renderDetailView();
+    return;
+  }
+
+  if (action === "adjustStock") {
+    await adjustProductStock(button.dataset.id, Number(button.dataset.delta || 0));
+  }
+}
+
+async function buildDetailProductUpdate(product, form) {
   const formData = new FormData(form);
-  const name = String(formData.get("editName") || "").trim();
-  const totalStock = Math.max(0, Number(formData.get("editTotalStock") || 0));
-  const listedQuantity = Math.max(0, Number(formData.get("editListedQuantity") || 0));
-  const listedBy = normalizeListedByValue(String(formData.get("editListedBy") || "").trim().toLowerCase());
-  const lowThreshold = Math.max(0, Number(formData.get("editLowThreshold") || DEFAULT_LOW_THRESHOLD));
-  const articleLink = String(formData.get("editArticleLink") || "").trim();
-  const photo = String(formData.get("editPhoto") || "").trim();
+  const name = String(formData.get("detailName") || "").trim();
+  const totalStock = Math.max(0, Number(formData.get("detailTotalStock") || 0));
+  const listedQuantity = Math.max(0, Number(formData.get("detailListedQuantity") || 0));
+  const listedBy = normalizeListedByValue(String(formData.get("detailListedBy") || "").trim().toLowerCase());
+  const lowThreshold = Math.max(0, Number(formData.get("detailLowThreshold") || DEFAULT_LOW_THRESHOLD));
+  const articleLink = String(formData.get("detailArticleLink") || "").trim();
+  let newImages = [];
+
+  try {
+    newImages = await collectImagesFromForm(formData, "detailImageUrls", "detailImageFiles");
+  } catch {
+    return null;
+  }
+
+  const images = newImages.length > 0
+    ? [...new Set([...getProductImages(product), ...newImages])]
+    : getProductImages(product);
 
   if (!name) {
     showStatus("Le nom du produit est obligatoire.", "error");
@@ -420,11 +457,6 @@ function buildEditedProduct(product, form) {
     return null;
   }
 
-  if (photo && !isValidPhotoValue(photo)) {
-    showStatus("La photo doit etre une URL http(s) ou une image deja importee.", "error");
-    return null;
-  }
-
   return {
     name,
     totalStock,
@@ -432,7 +464,8 @@ function buildEditedProduct(product, form) {
     listedBy: listedQuantity > 0 ? listedBy : "",
     lowThreshold,
     articleLink,
-    photo
+    images,
+    photo: images[0] || ""
   };
 }
 
@@ -457,7 +490,7 @@ async function adjustProductStock(productId, delta) {
   render();
 }
 
-async function markProductSold(productId) {
+async function markProductSold(productId, salePrice = null) {
   const product = state.products.find((item) => item.id === productId);
   if (!product) {
     showStatus("Produit introuvable.", "error");
@@ -476,6 +509,14 @@ async function markProductSold(productId) {
 
   product.listedQuantity -= 1;
   product.listedBy = removeSellerTagAfterSale(product.listedBy, soldBy, product.listedQuantity);
+  if (salePrice !== null) {
+    product.saleHistory = Array.isArray(product.saleHistory) ? product.saleHistory : [];
+    product.saleHistory.unshift({
+      price: salePrice,
+      soldBy,
+      soldAt: new Date().toISOString()
+    });
+  }
   product.updatedAt = new Date().toISOString();
   persistProductsCache();
   await syncUpsertProduct(product);
@@ -563,7 +604,21 @@ function render() {
 
   renderSyncBadge();
   renderStats();
-  renderTable();
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  refs.homeView.classList.toggle("hidden", state.view !== "home");
+  refs.addView.classList.toggle("hidden", state.view !== "add");
+  refs.detailView.classList.toggle("hidden", state.view !== "detail");
+
+  if (state.view === "home") {
+    renderTable();
+  }
+
+  if (state.view === "detail") {
+    renderDetailView();
+  }
 }
 
 function renderSyncBadge() {
@@ -616,14 +671,15 @@ function renderTable() {
       const outOfStockClass = availableStock === 0 ? "out-of-stock-row" : "";
       const availableClass = isLowStock(product) ? "stock-low-value" : "";
       const sellerBadge = renderSellerBadge(product.listedBy);
-      const photoCell = product.photo
-        ? `<img class="product-photo" src="${escapeHtml(product.photo)}" alt="Photo ${escapeHtml(product.name)}">`
+      const productImages = getProductImages(product);
+      const coverImage = productImages[0] || "";
+      const photoCell = coverImage
+        ? `<img class="product-photo" src="${escapeHtml(coverImage)}" alt="Photo ${escapeHtml(product.name)}">`
         : '<div class="no-photo">Pas photo</div>';
 
       const articleCell = product.articleLink
         ? `<a href="${escapeHtml(product.articleLink)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>`
         : "-";
-      const editRow = state.editingProductId === product.id ? renderEditRow(product) : "";
 
       return `
         <tr class="${outOfStockClass}">
@@ -640,53 +696,78 @@ function renderTable() {
           <td>${articleCell}</td>
           <td>
             <div class="actions">
-              <div class="stock-buttons">
-                <button class="btn btn-main btn-small" type="button" data-action="adjustStock" data-delta="1" data-id="${product.id}">+ Stock</button>
-                <button class="btn btn-outline btn-small" type="button" data-action="soldItem" data-id="${product.id}" ${product.listedQuantity <= 0 ? "disabled" : ""}>Vendu</button>
-              </div>
-
-              <form class="inline-form" data-action="updateSale" data-id="${product.id}">
-                <select name="saleSeller">
-                  <option value="" ${product.listedBy ? "" : "selected"}>Personne</option>
-                  <option value="anthony" ${product.listedBy === "anthony" ? "selected" : ""}>Anthony</option>
-                  <option value="julien" ${product.listedBy === "julien" ? "selected" : ""}>Julien</option>
-                  <option value="both" ${product.listedBy === "both" ? "selected" : ""}>Nous deux</option>
-                </select>
-                <input class="tiny" type="number" min="0" name="saleQty" value="${product.listedQuantity}" required>
-                <button class="btn btn-outline btn-small" type="submit">Maj vente</button>
-              </form>
-
               <button class="btn btn-outline btn-small" type="button" data-action="edit" data-id="${product.id}">Modifier</button>
               <button class="btn btn-danger btn-small" type="button" data-action="delete" data-id="${product.id}">Supprimer</button>
             </div>
           </td>
         </tr>
-        ${editRow}
       `;
     })
     .join("");
 }
 
-function renderEditRow(product) {
-  return `
-    <tr class="edit-row">
-      <td colspan="9">
-        <form class="edit-product-form" data-action="editProduct" data-id="${product.id}">
+function renderDetailView() {
+  const product = state.products.find((item) => item.id === state.selectedProductId);
+
+  if (!product) {
+    refs.detailBody.innerHTML = `
+      <section class="panel page-heading">
+        <div>
+          <h3>Article introuvable</h3>
+          <p class="subtitle">Il a peut-etre ete supprime.</p>
+        </div>
+        <button class="btn btn-outline" type="button" data-action="backHome">Retour</button>
+      </section>
+    `;
+    return;
+  }
+
+  const images = getProductImages(product);
+  const activeIndex = Math.min(state.selectedImageIndex, Math.max(images.length - 1, 0));
+  const activeImage = images[activeIndex] || "";
+
+  refs.detailBody.innerHTML = `
+    <section class="panel page-heading">
+      <div>
+        <h3>${escapeHtml(product.name)}</h3>
+        <p class="subtitle">Gestion complete de l'article</p>
+      </div>
+      <button class="btn btn-outline" type="button" data-action="backHome">Retour</button>
+    </section>
+
+    <section class="product-detail-shell">
+      <div class="detail-gallery panel">
+        <div class="detail-thumbs">
+          ${images.length > 0 ? images.map((image, index) => `
+            <button class="detail-thumb ${index === activeIndex ? "active" : ""}" type="button" data-action="selectImage" data-index="${index}">
+              <img src="${escapeHtml(image)}" alt="Image ${index + 1} ${escapeHtml(product.name)}">
+            </button>
+          `).join("") : '<div class="no-photo large">Pas image</div>'}
+        </div>
+        <div class="detail-main-image">
+          ${activeImage ? `<img src="${escapeHtml(activeImage)}" alt="Image principale ${escapeHtml(product.name)}">` : '<div class="no-photo large">Pas image</div>'}
+        </div>
+      </div>
+
+      <aside class="detail-side panel">
+        <form class="detail-product-form" data-action="saveDetailProduct" data-id="${product.id}">
           <label>
             Produit
-            <input name="editName" type="text" value="${escapeHtml(product.name)}" required>
+            <input name="detailName" type="text" value="${escapeHtml(product.name)}" required>
           </label>
+          <div class="detail-number-grid">
+            <label>
+              Stock total
+              <input name="detailTotalStock" type="number" min="0" value="${product.totalStock}" required>
+            </label>
+            <label>
+              En vente
+              <input name="detailListedQuantity" type="number" min="0" value="${product.listedQuantity}" required>
+            </label>
+          </div>
           <label>
-            Stock total
-            <input name="editTotalStock" type="number" min="0" value="${product.totalStock}" required>
-          </label>
-          <label>
-            En vente
-            <input name="editListedQuantity" type="number" min="0" value="${product.listedQuantity}" required>
-          </label>
-          <label>
-            Vendeur
-            <select name="editListedBy">
+            Mis en vente par
+            <select name="detailListedBy">
               <option value="" ${product.listedBy ? "" : "selected"}>Personne</option>
               <option value="anthony" ${product.listedBy === "anthony" ? "selected" : ""}>Anthony</option>
               <option value="julien" ${product.listedBy === "julien" ? "selected" : ""}>Julien</option>
@@ -694,24 +775,71 @@ function renderEditRow(product) {
             </select>
           </label>
           <label>
-            Seuil bas
-            <input name="editLowThreshold" type="number" min="0" value="${product.lowThreshold}" required>
+            Seuil stock bas
+            <input name="detailLowThreshold" type="number" min="0" value="${product.lowThreshold}" required>
           </label>
           <label>
             Lien Vinted
-            <input name="editArticleLink" type="url" value="${escapeHtml(product.articleLink)}" placeholder="https://www.vinted.fr/...">
+            <input name="detailArticleLink" type="url" value="${escapeHtml(product.articleLink)}" placeholder="https://www.vinted.fr/...">
           </label>
           <label>
-            Photo URL
-            <input name="editPhoto" type="text" value="${escapeHtml(product.photo)}" placeholder="https://...">
+            Ajouter images URL
+            <textarea name="detailImageUrls" rows="3" placeholder="https://image-1...&#10;https://image-2..."></textarea>
           </label>
-          <div class="edit-actions">
-            <button class="btn btn-main btn-small" type="submit">Enregistrer</button>
-            <button class="btn btn-outline btn-small" type="button" data-action="cancelEdit" data-id="${product.id}">Annuler</button>
-          </div>
+          <label>
+            Ajouter images fichier
+            <input name="detailImageFiles" type="file" accept="image/*" multiple>
+          </label>
+          <button class="btn btn-main" type="submit">Enregistrer les modifications</button>
         </form>
-      </td>
-    </tr>
+
+        <div class="stock-manager">
+          <div class="stock-manager-grid">
+            <article>
+              <span>Dispo</span>
+              <strong class="${isLowStock(product) ? "stock-low-value" : ""}">${getAvailableStock(product)}</strong>
+            </article>
+            <article>
+              <span>En vente</span>
+              <strong>${product.listedQuantity}</strong>
+            </article>
+          </div>
+          <button class="btn btn-main" type="button" data-action="adjustStock" data-delta="1" data-id="${product.id}">+ Stock</button>
+        </div>
+
+        <form class="sale-form" data-action="recordSale" data-id="${product.id}">
+          <label>
+            Prix de vente
+            <input name="salePrice" type="number" min="0" step="0.01" placeholder="Ex: 12.50" required>
+          </label>
+          <button class="btn btn-outline" type="submit" ${product.listedQuantity <= 0 ? "disabled" : ""}>Vendu</button>
+        </form>
+      </aside>
+    </section>
+
+    <section class="panel price-history-panel">
+      <h3>Historique des prix vendus</h3>
+      ${renderSaleHistory(product)}
+    </section>
+  `;
+}
+
+function renderSaleHistory(product) {
+  const history = Array.isArray(product.saleHistory) ? product.saleHistory : [];
+
+  if (history.length === 0) {
+    return '<p class="message">Aucune vente enregistree.</p>';
+  }
+
+  return `
+    <div class="price-history-list">
+      ${history.map((sale) => `
+        <article class="price-history-item">
+          <strong>${formatPrice(sale.price)}</strong>
+          <span>${getSellerDisplayName(sale.soldBy)} - ${formatDateTime(sale.soldAt)}</span>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -823,6 +951,7 @@ function normalizeProduct(rawProduct) {
 
   const totalStock = Math.max(0, Number(rawProduct.totalStock || 0));
   const listedQuantity = Math.max(0, Number(rawProduct.listedQuantity || 0));
+  const images = normalizeImages(rawProduct);
 
   return {
     id: String(rawProduct.id || makeId()),
@@ -832,11 +961,52 @@ function normalizeProduct(rawProduct) {
     listedBy: normalizeListedByValue(rawProduct.listedBy),
     lowThreshold: Math.max(0, Number(rawProduct.lowThreshold || DEFAULT_LOW_THRESHOLD)),
     articleLink: String(rawProduct.articleLink || "").trim(),
-    photo: String(rawProduct.photo || "").trim(),
+    photo: images[0] || "",
+    images,
+    saleHistory: normalizeSaleHistory(rawProduct.saleHistory),
     createdBy: String(rawProduct.createdBy || "").trim(),
     createdAt: String(rawProduct.createdAt || new Date().toISOString()),
     updatedAt: String(rawProduct.updatedAt || rawProduct.createdAt || new Date().toISOString())
   };
+}
+
+function normalizeImages(rawProduct) {
+  const images = Array.isArray(rawProduct.images) ? rawProduct.images : [];
+  const legacyPhoto = String(rawProduct.photo || "").trim();
+  const normalized = images
+    .map((image) => String(image || "").trim())
+    .filter(Boolean);
+
+  if (legacyPhoto) {
+    normalized.unshift(legacyPhoto);
+  }
+
+  return [...new Set(normalized)];
+}
+
+function normalizeSaleHistory(rawHistory) {
+  if (!Array.isArray(rawHistory)) {
+    return [];
+  }
+
+  return rawHistory
+    .map((sale) => ({
+      price: Number(sale && sale.price ? sale.price : 0),
+      soldBy: normalizeSoldByValue(sale && sale.soldBy ? sale.soldBy : ""),
+      soldAt: String(sale && sale.soldAt ? sale.soldAt : "")
+    }))
+    .filter((sale) => sale.price > 0);
+}
+
+function getProductImages(product) {
+  const images = Array.isArray(product.images) ? product.images : [];
+  const normalized = images.map((image) => String(image || "").trim()).filter(Boolean);
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  return product.photo ? [product.photo] : [];
 }
 
 function normalizeListedByValue(value) {
@@ -1111,6 +1281,41 @@ function showStatus(message, kind) {
   }, 3500);
 }
 
+async function collectImagesFromForm(formData, urlsFieldName, filesFieldName) {
+  const images = [];
+  const imageUrls = parseImageUrls(String(formData.get(urlsFieldName) || ""));
+
+  for (const imageUrl of imageUrls) {
+    if (!isValidHttpUrl(imageUrl)) {
+      showStatus("Une URL image est invalide.", "error");
+      throw new Error("invalid_image_url");
+    }
+    images.push(imageUrl);
+  }
+
+  const imageFiles = formData
+    .getAll(filesFieldName)
+    .filter((file) => file instanceof File && file.size > 0);
+
+  for (const imageFile of imageFiles) {
+    try {
+      images.push(await fileToDataUrl(imageFile));
+    } catch {
+      showStatus("Impossible de lire une image importee.", "error");
+      throw new Error("file_read_error");
+    }
+  }
+
+  return [...new Set(images)];
+}
+
+function parseImageUrls(value) {
+  return value
+    .split(/\n|,/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1144,6 +1349,30 @@ function isValidHttpUrl(text) {
 
 function isValidPhotoValue(text) {
   return isValidHttpUrl(text) || text.startsWith("data:image/");
+}
+
+function parseSalePrice(value) {
+  const normalized = String(value || "").trim().replace(",", ".");
+  const price = Number(normalized);
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+function formatPrice(value) {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR"
+  }).format(Number(value || 0));
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(new Date(value));
 }
 
 function getPasswordHashForUser(username) {

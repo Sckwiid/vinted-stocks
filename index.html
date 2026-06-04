@@ -45,143 +45,159 @@
         <div class="topbar-actions">
           <span id="sessionBadge" class="seller-badge"></span>
           <span id="syncBadge" class="sync-badge sync-local">Sync local</span>
+          <button id="goAddBtn" class="btn btn-main" type="button">Modifier les stocks</button>
           <button id="logoutBtn" class="btn btn-outline" type="button">Deconnexion</button>
         </div>
       </header>
 
-      <section class="stats-grid">
-        <article class="stat-card panel">
-          <p class="stat-label">Articles</p>
-          <p id="statProducts" class="stat-value">0</p>
-        </article>
-        <article class="stat-card panel">
-          <p class="stat-label">Stock disponible</p>
-          <p id="statAvailable" class="stat-value">0</p>
-        </article>
-        <article class="stat-card panel">
-          <p class="stat-label">Stock bas</p>
-          <p id="statLow" class="stat-value">0</p>
-        </article>
-        <article class="stat-card panel">
-          <p class="stat-label">Total en vente</p>
-          <p id="statListed" class="stat-value">0</p>
-        </article>
+      <section id="homeView">
+        <section class="stats-grid">
+          <article class="stat-card panel">
+            <p class="stat-label">Articles</p>
+            <p id="statProducts" class="stat-value">0</p>
+          </article>
+          <article class="stat-card panel">
+            <p class="stat-label">Stock disponible</p>
+            <p id="statAvailable" class="stat-value">0</p>
+          </article>
+          <article class="stat-card panel">
+            <p class="stat-label">Stock bas</p>
+            <p id="statLow" class="stat-value">0</p>
+          </article>
+          <article class="stat-card panel">
+            <p class="stat-label">Total en vente</p>
+            <p id="statListed" class="stat-value">0</p>
+          </article>
+        </section>
+
+        <section class="panel">
+          <h3>Recherche, filtres et tri</h3>
+          <div class="toolbar">
+            <label>
+              Rechercher
+              <input id="searchInput" type="search" placeholder="Nom ou lien">
+            </label>
+            <label>
+              Filtre vendeur
+              <select id="sellerFilter">
+                <option value="all">Tous</option>
+                <option value="anthony">Anthony</option>
+                <option value="julien">Julien</option>
+                <option value="both">Nous deux</option>
+              </select>
+            </label>
+            <label class="check-label">
+              <input id="excludeAnthony" type="checkbox">
+              Exclure Anthony
+            </label>
+            <label class="check-label">
+              <input id="excludeJulien" type="checkbox">
+              Exclure Julien
+            </label>
+            <label>
+              Tri
+              <select id="sortSelect">
+                <option value="updatedDesc">Recents</option>
+                <option value="nameAsc">Nom A-Z</option>
+                <option value="availableAsc">Stock dispo croissant</option>
+                <option value="availableDesc">Stock dispo decroissant</option>
+                <option value="listedDesc">En vente decroissant</option>
+              </select>
+            </label>
+            <label>
+              Stock dispo 0
+              <select id="stockZeroFilter">
+                <option value="all">Afficher tous</option>
+                <option value="onlyZero">Uniquement stock 0</option>
+                <option value="hideZero">Masquer stock 0</option>
+              </select>
+            </label>
+            <label class="check-label">
+              <input id="lowOnly" type="checkbox">
+              Uniquement stock bas
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Articles</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Photo</th>
+                  <th>Produit</th>
+                  <th>Vendeur</th>
+                  <th>Stock total</th>
+                  <th>En vente</th>
+                  <th>Stock dispo</th>
+                  <th>Seuil bas</th>
+                  <th>Lien</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="productsBody"></tbody>
+            </table>
+          </div>
+          <p id="emptyState" class="message hidden">Aucun produit pour ce filtre.</p>
+        </section>
       </section>
 
-      <section class="panel">
-        <h3>Ajouter un produit</h3>
-        <form id="addProductForm" class="product-form">
-          <label>
-            Nom du produit
-            <input name="name" type="text" required placeholder="Ex: Pantalon Nike vintage">
-          </label>
-          <label>
-            Stock total
-            <input name="totalStock" type="number" min="0" required value="0">
-          </label>
-          <label>
-            Quantite en vente
-            <input name="listedQuantity" type="number" min="0" value="0">
-          </label>
-          <label>
-            Mis en vente par
-            <select name="listedBy">
-              <option value="">Personne</option>
-              <option value="anthony">Anthony</option>
-              <option value="julien">Julien</option>
-              <option value="both">Nous deux</option>
-            </select>
-          </label>
-          <label>
-            Seuil stock bas
-            <input name="lowThreshold" type="number" min="0" value="3">
-          </label>
-          <label>
-            Lien article Vinted
-            <input name="articleLink" type="url" placeholder="https://www.vinted.fr/...">
-          </label>
-          <label>
-            Photo (URL)
-            <input name="photoUrl" type="url" placeholder="https://...">
-          </label>
-          <label>
-            ou photo (fichier)
-            <input name="photoFile" type="file" accept="image/*">
-          </label>
-          <button type="submit" class="btn btn-main">Ajouter</button>
-        </form>
+      <section id="addView" class="hidden">
+        <section class="panel page-heading">
+          <div>
+            <h3>Ajouter un article</h3>
+            <p class="subtitle">Images multiples, stock et lien Vinted</p>
+          </div>
+          <button id="backHomeFromAdd" class="btn btn-outline" type="button">Retour</button>
+        </section>
+
+        <section class="panel">
+          <form id="addProductForm" class="product-form add-product-form">
+            <label>
+              Nom du produit
+              <input name="name" type="text" required placeholder="Ex: Mini jupe blanche">
+            </label>
+            <label>
+              Stock total
+              <input name="totalStock" type="number" min="0" required value="0">
+            </label>
+            <label>
+              Quantite en vente
+              <input name="listedQuantity" type="number" min="0" value="0">
+            </label>
+            <label>
+              Mis en vente par
+              <select name="listedBy">
+                <option value="">Personne</option>
+                <option value="anthony">Anthony</option>
+                <option value="julien">Julien</option>
+                <option value="both">Nous deux</option>
+              </select>
+            </label>
+            <label>
+              Seuil stock bas
+              <input name="lowThreshold" type="number" min="0" value="3">
+            </label>
+            <label>
+              Lien article Vinted
+              <input name="articleLink" type="url" placeholder="https://www.vinted.fr/...">
+            </label>
+            <label class="wide-field">
+              Images URL (une par ligne)
+              <textarea name="imageUrls" rows="4" placeholder="https://image-1...&#10;https://image-2...&#10;https://image-3..."></textarea>
+            </label>
+            <label class="wide-field">
+              Images fichier
+              <input name="imageFiles" type="file" accept="image/*" multiple>
+            </label>
+            <button type="submit" class="btn btn-main">Ajouter l'article</button>
+          </form>
+        </section>
       </section>
 
-      <section class="panel">
-        <h3>Recherche, filtres et tri</h3>
-        <div class="toolbar">
-          <label>
-            Rechercher
-            <input id="searchInput" type="search" placeholder="Nom ou lien">
-          </label>
-          <label>
-            Filtre vendeur
-            <select id="sellerFilter">
-              <option value="all">Tous</option>
-              <option value="anthony">Anthony</option>
-              <option value="julien">Julien</option>
-              <option value="both">Nous deux</option>
-            </select>
-          </label>
-          <label class="check-label">
-            <input id="excludeAnthony" type="checkbox">
-            Exclure Anthony
-          </label>
-          <label class="check-label">
-            <input id="excludeJulien" type="checkbox">
-            Exclure Julien
-          </label>
-          <label>
-            Tri
-            <select id="sortSelect">
-              <option value="updatedDesc">Recents</option>
-              <option value="nameAsc">Nom A-Z</option>
-              <option value="availableAsc">Stock dispo croissant</option>
-              <option value="availableDesc">Stock dispo decroissant</option>
-              <option value="listedDesc">En vente decroissant</option>
-            </select>
-          </label>
-          <label>
-            Stock dispo 0
-            <select id="stockZeroFilter">
-              <option value="all">Afficher tous</option>
-              <option value="onlyZero">Uniquement stock 0</option>
-              <option value="hideZero">Masquer stock 0</option>
-            </select>
-          </label>
-          <label class="check-label">
-            <input id="lowOnly" type="checkbox">
-            Uniquement stock bas
-          </label>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h3>Articles</h3>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Photo</th>
-                <th>Produit</th>
-                <th>Vendeur</th>
-                <th>Stock total</th>
-                <th>En vente</th>
-                <th>Stock dispo</th>
-                <th>Seuil bas</th>
-                <th>Lien</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="productsBody"></tbody>
-          </table>
-        </div>
-        <p id="emptyState" class="message hidden">Aucun produit pour ce filtre.</p>
+      <section id="detailView" class="hidden">
+        <div id="detailBody"></div>
       </section>
 
       <p id="statusMessage" class="message hidden"></p>

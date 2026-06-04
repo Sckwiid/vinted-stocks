@@ -21,6 +21,9 @@ Mini app statique pour gerer vos stocks Vinted a 2 utilisateurs.
   - Supprimer un produit
 - Recherche, filtres et tris
 - Filtres avances: exclusion vendeur (Anthony/Julien) et gestion affichage stock 0
+- Vue detail article avec galerie multi-images
+- Ajout d'articles sur une page dediee
+- Historique des prix de vente
 - Sync partage multi-PC via Firebase Realtime Database (optionnel)
 - Cache local `localStorage` (fallback)
 
