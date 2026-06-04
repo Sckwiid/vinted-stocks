@@ -383,8 +383,9 @@ async function handleDetailSubmit(event) {
   }
 
   if (action === "recordSale") {
-    const salePrice = parseSalePrice(form.querySelector("input[name='salePrice']")?.value || "");
-    if (salePrice === null) {
+    const salePriceInput = form.querySelector("input[name='salePrice']")?.value || "";
+    const salePrice = salePriceInput.trim() ? parseSalePrice(salePriceInput) : null;
+    if (salePriceInput.trim() && salePrice === null) {
       showStatus("Indique un prix de vente valide.", "error");
       return;
     }
@@ -810,7 +811,7 @@ function renderDetailView() {
         <form class="sale-form" data-action="recordSale" data-id="${product.id}">
           <label>
             Prix de vente
-            <input name="salePrice" type="number" min="0" step="0.01" placeholder="Ex: 12.50" required>
+            <input name="salePrice" type="number" min="0" step="0.01" placeholder="Optionnel">
           </label>
           <button class="btn btn-outline" type="submit" ${product.listedQuantity <= 0 ? "disabled" : ""}>Vendu</button>
         </form>
