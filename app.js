@@ -398,13 +398,20 @@ async function handleDetailSubmit(event) {
 
   if (action === "recordSale") {
     const salePriceInput = form.querySelector("input[name='salePrice']")?.value || "";
+    const soldBy = normalizeSoldByValue(form.querySelector("select[name='soldBy']")?.value || "");
     const salePrice = salePriceInput.trim() ? parseSalePrice(salePriceInput) : null;
+
+    if (!soldBy) {
+      showStatus("Choisis qui a vendu l'article.", "error");
+      return;
+    }
+
     if (salePriceInput.trim() && salePrice === null) {
       showStatus("Indique un prix de vente valide.", "error");
       return;
     }
 
-    await markProductSold(product.id, salePrice);
+    await markProductSold(product.id, salePrice, soldBy);
   }
 }
 
@@ -505,7 +512,7 @@ async function adjustProductStock(productId, delta) {
   render();
 }
 
-async function markProductSold(productId, salePrice = null) {
+async function markProductSold(productId, salePrice = null, soldByValue = "") {
   const product = state.products.find((item) => item.id === productId);
   if (!product) {
     showStatus("Produit introuvable.", "error");
@@ -517,7 +524,7 @@ async function markProductSold(productId, salePrice = null) {
     return;
   }
 
-  const soldBy = requestSoldBy(product);
+  const soldBy = normalizeSoldByValue(soldByValue) || requestSoldBy();
   if (!soldBy) {
     return;
   }
@@ -539,12 +546,8 @@ async function markProductSold(productId, salePrice = null) {
   render();
 }
 
-function requestSoldBy(product) {
-  const taggedSellers = getListedSellers(product.listedBy);
-  const availableSellers = taggedSellers.length > 0
-    ? taggedSellers
-    : [SELLER_ANTHONY, SELLER_JULIEN, SELLER_COMPTE_PRO];
-
+function requestSoldBy() {
+  const availableSellers = [SELLER_ANTHONY, SELLER_JULIEN, SELLER_COMPTE_PRO];
   const defaultSeller = availableSellers[0];
   const sellerChoices = availableSellers.map(getSellerDisplayName).join(" ou ");
   const answer = window.prompt(
@@ -558,12 +561,31 @@ function requestSoldBy(product) {
 
   const soldBy = normalizeSoldByValue(answer);
 
-  if (!soldBy || !availableSellers.includes(soldBy)) {
-    showStatus("Ce vendeur n'est pas marque en vente pour cet article.", "error");
+  if (!soldBy) {
+    showStatus("Choisis Anthony, Julien ou Compte pro.", "error");
     return "";
   }
 
   return soldBy;
+}
+
+function getDefaultSoldBy(product) {
+  const listedSellers = getListedSellers(product.listedBy);
+  const currentUsername = normalizeUsername(state.user && state.user.username);
+
+  if (listedSellers.includes(currentUsername)) {
+    return currentUsername;
+  }
+
+  if (listedSellers.length > 0) {
+    return listedSellers[0];
+  }
+
+  if (currentUsername === SELLER_ANTHONY || currentUsername === SELLER_JULIEN || currentUsername === SELLER_COMPTE_PRO) {
+    return currentUsername;
+  }
+
+  return SELLER_ANTHONY;
 }
 
 function normalizeSoldByValue(value) {
@@ -746,6 +768,7 @@ function renderDetailView() {
   const images = getProductImages(product);
   const activeIndex = Math.min(state.selectedImageIndex, Math.max(images.length - 1, 0));
   const activeImage = images[activeIndex] || "";
+  const defaultSoldBy = getDefaultSoldBy(product);
 
   refs.detailBody.innerHTML = `
     <section class="panel page-heading">
@@ -830,6 +853,14 @@ function renderDetailView() {
         </div>
 
         <form class="sale-form" data-action="recordSale" data-id="${product.id}">
+          <label>
+            Vendu par
+            <select name="soldBy" required>
+              <option value="anthony" ${defaultSoldBy === SELLER_ANTHONY ? "selected" : ""}>Anthony</option>
+              <option value="julien" ${defaultSoldBy === SELLER_JULIEN ? "selected" : ""}>Julien</option>
+              <option value="compte-pro" ${defaultSoldBy === SELLER_COMPTE_PRO ? "selected" : ""}>Compte pro</option>
+            </select>
+          </label>
           <label>
             Prix de vente
             <input name="salePrice" type="number" min="0" step="0.01" placeholder="Optionnel">
