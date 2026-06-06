@@ -84,7 +84,7 @@
                 <option value="anthony">Anthony</option>
                 <option value="julien">Julien</option>
                 <option value="compte-pro">Compte pro</option>
-                <option value="both">Nous deux</option>
+                <option value="both">Anthony + Julien</option>
               </select>
             </label>
             <label class="check-label">
@@ -171,16 +171,23 @@
               Quantite en vente
               <input name="listedQuantity" type="number" min="0" value="0">
             </label>
-            <label>
-              Mis en vente par
-              <select name="listedBy">
-                <option value="">Personne</option>
-                <option value="anthony">Anthony</option>
-                <option value="julien">Julien</option>
-                <option value="compte-pro">Compte pro</option>
-                <option value="both">Nous deux</option>
-              </select>
-            </label>
+            <fieldset class="seller-picker">
+              <legend>Mis en vente par</legend>
+              <div class="seller-checkboxes">
+                <label class="seller-option">
+                  <input type="checkbox" name="listedBy" value="anthony">
+                  <span class="seller-badge seller-anthony">Anthony</span>
+                </label>
+                <label class="seller-option">
+                  <input type="checkbox" name="listedBy" value="julien">
+                  <span class="seller-badge seller-julien">Julien</span>
+                </label>
+                <label class="seller-option">
+                  <input type="checkbox" name="listedBy" value="compte-pro">
+                  <span class="seller-badge seller-compte-pro">Compte pro</span>
+                </label>
+              </div>
+            </fieldset>
             <label>
               Seuil stock bas
               <input name="lowThreshold" type="number" min="0" value="3">

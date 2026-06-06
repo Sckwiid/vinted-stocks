@@ -6,6 +6,7 @@ const SELLER_ANTHONY = "anthony";
 const SELLER_JULIEN = "julien";
 const SELLER_COMPTE_PRO = "compte-pro";
 const SELLER_BOTH = "both";
+const SELLER_KEYS = [SELLER_ANTHONY, SELLER_JULIEN, SELLER_COMPTE_PRO];
 
 const USERS = {
   anthony: {
@@ -250,7 +251,7 @@ async function handleAddProduct(event) {
   const name = String(formData.get("name") || "").trim();
   const totalStock = Math.max(0, Number(formData.get("totalStock") || 0));
   const listedQuantity = Math.max(0, Number(formData.get("listedQuantity") || 0));
-  const listedBy = normalizeListedByValue(String(formData.get("listedBy") || "").trim().toLowerCase());
+  const listedBy = normalizeListedByValue(formData.getAll("listedBy"));
   const lowThreshold = Math.max(0, Number(formData.get("lowThreshold") || DEFAULT_LOW_THRESHOLD));
   const articleLink = String(formData.get("articleLink") || "").trim();
   let images = [];
@@ -272,7 +273,7 @@ async function handleAddProduct(event) {
   }
 
   if (listedQuantity > 0 && !listedBy) {
-    showStatus("Choisis Anthony, Julien, Compte pro ou Nous deux pour un article en vente.", "error");
+    showStatus("Choisis au moins une personne pour un article en vente.", "error");
     return;
   }
 
@@ -444,7 +445,7 @@ async function buildDetailProductUpdate(product, form) {
   const name = String(formData.get("detailName") || "").trim();
   const totalStock = Math.max(0, Number(formData.get("detailTotalStock") || 0));
   const listedQuantity = Math.max(0, Number(formData.get("detailListedQuantity") || 0));
-  const listedBy = normalizeListedByValue(String(formData.get("detailListedBy") || "").trim().toLowerCase());
+  const listedBy = normalizeListedByValue(formData.getAll("detailListedBy"));
   const lowThreshold = Math.max(0, Number(formData.get("detailLowThreshold") || DEFAULT_LOW_THRESHOLD));
   const articleLink = String(formData.get("detailArticleLink") || "").trim();
   let newImages = [];
@@ -470,7 +471,7 @@ async function buildDetailProductUpdate(product, form) {
   }
 
   if (listedQuantity > 0 && !listedBy) {
-    showStatus("Choisis Anthony, Julien, Compte pro ou Nous deux pour la mise en vente.", "error");
+    showStatus("Choisis au moins une personne pour la mise en vente.", "error");
     return null;
   }
 
@@ -603,13 +604,7 @@ function normalizeSoldByValue(value) {
 }
 
 function getListedSellers(listedBy) {
-  if (listedBy === SELLER_BOTH) {
-    return [SELLER_ANTHONY, SELLER_JULIEN];
-  }
-  if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN || listedBy === SELLER_COMPTE_PRO) {
-    return [listedBy];
-  }
-  return [];
+  return normalizeListedSellers(listedBy);
 }
 
 function removeSellerTagAfterSale(listedBy, soldBy, remainingListedQuantity) {
@@ -617,19 +612,8 @@ function removeSellerTagAfterSale(listedBy, soldBy, remainingListedQuantity) {
     return "";
   }
 
-  if (listedBy === SELLER_BOTH && soldBy === SELLER_ANTHONY) {
-    return SELLER_JULIEN;
-  }
-
-  if (listedBy === SELLER_BOTH && soldBy === SELLER_JULIEN) {
-    return SELLER_ANTHONY;
-  }
-
-  if (listedBy === soldBy) {
-    return "";
-  }
-
-  return listedBy;
+  const nextSellers = getListedSellers(listedBy).filter((seller) => seller !== soldBy);
+  return normalizeListedByValue(nextSellers);
 }
 
 function render() {
@@ -768,6 +752,7 @@ function renderDetailView() {
   const images = getProductImages(product);
   const activeIndex = Math.min(state.selectedImageIndex, Math.max(images.length - 1, 0));
   const activeImage = images[activeIndex] || "";
+  const listedSellers = getListedSellers(product.listedBy);
   const defaultSoldBy = getDefaultSoldBy(product);
 
   refs.detailBody.innerHTML = `
@@ -809,16 +794,14 @@ function renderDetailView() {
               <input name="detailListedQuantity" type="number" min="0" value="${product.listedQuantity}" required>
             </label>
           </div>
-          <label>
-            Mis en vente par
-            <select name="detailListedBy">
-              <option value="" ${product.listedBy ? "" : "selected"}>Personne</option>
-              <option value="anthony" ${product.listedBy === "anthony" ? "selected" : ""}>Anthony</option>
-              <option value="julien" ${product.listedBy === "julien" ? "selected" : ""}>Julien</option>
-              <option value="compte-pro" ${product.listedBy === "compte-pro" ? "selected" : ""}>Compte pro</option>
-              <option value="both" ${product.listedBy === "both" ? "selected" : ""}>Nous deux</option>
-            </select>
-          </label>
+          <fieldset class="seller-picker">
+            <legend>Mis en vente par</legend>
+            <div class="seller-checkboxes">
+              ${renderSellerCheckbox("detailListedBy", SELLER_ANTHONY, listedSellers)}
+              ${renderSellerCheckbox("detailListedBy", SELLER_JULIEN, listedSellers)}
+              ${renderSellerCheckbox("detailListedBy", SELLER_COMPTE_PRO, listedSellers)}
+            </div>
+          </fieldset>
           <label>
             Seuil stock bas
             <input name="detailLowThreshold" type="number" min="0" value="${product.lowThreshold}" required>
@@ -944,23 +927,33 @@ function isLowStock(product) {
 }
 
 function renderSellerBadge(sellerKey) {
-  if (sellerKey === SELLER_BOTH) {
-    return '<div class="seller-badges"><span class="seller-badge seller-anthony">Anthony</span><span class="seller-badge seller-julien">Julien</span></div>';
+  const sellers = getListedSellers(sellerKey);
+
+  if (sellers.length === 0) {
+    return '<span class="seller-badge seller-none">Personne</span>';
   }
 
-  if (sellerKey === SELLER_ANTHONY) {
-    return '<span class="seller-badge seller-anthony">Anthony</span>';
+  return `<div class="seller-badges">${sellers.map(renderSingleSellerBadge).join("")}</div>`;
+}
+
+function renderSingleSellerBadge(sellerKey) {
+  const user = USERS[sellerKey];
+  if (!user) {
+    return "";
   }
 
-  if (sellerKey === SELLER_JULIEN) {
-    return '<span class="seller-badge seller-julien">Julien</span>';
-  }
+  return `<span class="seller-badge ${user.badgeClass}">${escapeHtml(user.displayName)}</span>`;
+}
 
-  if (sellerKey === SELLER_COMPTE_PRO) {
-    return '<span class="seller-badge seller-compte-pro">Compte pro</span>';
-  }
+function renderSellerCheckbox(name, sellerKey, selectedSellers) {
+  const checked = selectedSellers.includes(sellerKey) ? "checked" : "";
 
-  return '<span class="seller-badge seller-none">Personne</span>';
+  return `
+    <label class="seller-option">
+      <input type="checkbox" name="${escapeHtml(name)}" value="${sellerKey}" ${checked}>
+      ${renderSingleSellerBadge(sellerKey)}
+    </label>
+  `;
 }
 
 function getSellerDisplayName(sellerKey) {
@@ -1073,66 +1066,84 @@ function getProductImages(product) {
 }
 
 function normalizeListedByValue(value) {
-  if (value === SELLER_ANTHONY || value === SELLER_JULIEN || value === SELLER_COMPTE_PRO || value === SELLER_BOTH) {
-    return value;
+  return normalizeListedSellers(value).join(",");
+}
+
+function normalizeListedSellers(value) {
+  const sellers = [];
+  const rawValues = Array.isArray(value) ? value : [value];
+
+  for (const rawValue of rawValues) {
+    collectListedSellers(rawValue, sellers);
   }
 
-  if (Array.isArray(value)) {
-    const normalizedValues = value.map(normalizeUsername);
-    const hasAnthony = normalizedValues.includes(SELLER_ANTHONY);
-    const hasJulien = normalizedValues.includes(SELLER_JULIEN);
-    const hasComptePro = normalizedValues.includes(SELLER_COMPTE_PRO);
-    if (hasAnthony && hasJulien) {
-      return SELLER_BOTH;
-    }
-    if (hasAnthony) {
-      return SELLER_ANTHONY;
-    }
-    if (hasJulien) {
-      return SELLER_JULIEN;
-    }
-    if (hasComptePro) {
-      return SELLER_COMPTE_PRO;
-    }
-    return "";
+  return SELLER_KEYS.filter((sellerKey) => sellers.includes(sellerKey));
+}
+
+function collectListedSellers(value, sellers) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) {
+    return;
   }
 
-  if (typeof value === "string") {
-    const lower = normalizeUsername(value);
-    if (lower === SELLER_ANTHONY) {
-      return SELLER_ANTHONY;
-    }
-    if (lower === SELLER_JULIEN) {
-      return SELLER_JULIEN;
-    }
-    if (lower === SELLER_COMPTE_PRO) {
-      return SELLER_COMPTE_PRO;
-    }
-    if (lower === SELLER_BOTH || lower === "nous deux") {
-      return SELLER_BOTH;
-    }
-    if (lower === `${SELLER_ANTHONY},${SELLER_JULIEN}` || lower === `${SELLER_JULIEN},${SELLER_ANTHONY}`) {
-      return SELLER_BOTH;
-    }
-    if (lower === `${SELLER_ANTHONY} ${SELLER_JULIEN}` || lower === `${SELLER_JULIEN} ${SELLER_ANTHONY}`) {
-      return SELLER_BOTH;
-    }
+  const normalized = normalizeUsername(text);
+  if (normalized === SELLER_BOTH || text === "nous deux") {
+    addSellerKey(sellers, SELLER_ANTHONY);
+    addSellerKey(sellers, SELLER_JULIEN);
+    return;
   }
 
-  return "";
+  if (SELLER_KEYS.includes(normalized)) {
+    addSellerKey(sellers, normalized);
+    return;
+  }
+
+  const parts = text.split(/[,\n;/|]+/).map((part) => part.trim()).filter(Boolean);
+  for (const part of parts) {
+    const partNormalized = normalizeUsername(part);
+
+    if (partNormalized === SELLER_BOTH || part === "nous deux") {
+      addSellerKey(sellers, SELLER_ANTHONY);
+      addSellerKey(sellers, SELLER_JULIEN);
+      continue;
+    }
+
+    if (SELLER_KEYS.includes(partNormalized)) {
+      addSellerKey(sellers, partNormalized);
+      continue;
+    }
+
+    if (part.includes(SELLER_ANTHONY) || part === "a") {
+      addSellerKey(sellers, SELLER_ANTHONY);
+    }
+    if (part.includes(SELLER_JULIEN) || part === "j") {
+      addSellerKey(sellers, SELLER_JULIEN);
+    }
+    if ((part.includes("compte") && part.includes("pro")) || partNormalized === "pro" || partNormalized === "cp") {
+      addSellerKey(sellers, SELLER_COMPTE_PRO);
+    }
+  }
+}
+
+function addSellerKey(sellers, sellerKey) {
+  if (SELLER_KEYS.includes(sellerKey) && !sellers.includes(sellerKey)) {
+    sellers.push(sellerKey);
+  }
 }
 
 function getSellerSearchTokens(listedBy) {
-  if (listedBy === SELLER_BOTH) {
-    return `${SELLER_ANTHONY} ${SELLER_JULIEN} nous deux`;
+  const sellers = getListedSellers(listedBy);
+  const tokens = sellers.flatMap((sellerKey) => [sellerKey, getSellerDisplayName(sellerKey).toLowerCase()]);
+
+  if (sellers.includes(SELLER_ANTHONY) && sellers.includes(SELLER_JULIEN)) {
+    tokens.push("nous deux", "both");
   }
-  if (listedBy === SELLER_COMPTE_PRO) {
-    return "compte pro compte-pro compte_pro pro";
+
+  if (sellers.includes(SELLER_COMPTE_PRO)) {
+    tokens.push("compte pro", "compte_pro", "pro");
   }
-  if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN) {
-    return listedBy;
-  }
-  return "";
+
+  return tokens.join(" ");
 }
 
 function listedByMatchesFilter(listedBy, filterValue) {
@@ -1140,29 +1151,24 @@ function listedByMatchesFilter(listedBy, filterValue) {
     return true;
   }
 
+  const sellers = getListedSellers(listedBy);
+
   if (filterValue === SELLER_BOTH) {
-    return listedBy === SELLER_BOTH;
+    return sellers.includes(SELLER_ANTHONY) && sellers.includes(SELLER_JULIEN);
   }
 
-  if (filterValue === SELLER_ANTHONY) {
-    return listedBy === SELLER_ANTHONY || listedBy === SELLER_BOTH;
-  }
-
-  if (filterValue === SELLER_JULIEN) {
-    return listedBy === SELLER_JULIEN || listedBy === SELLER_BOTH;
-  }
-
-  if (filterValue === SELLER_COMPTE_PRO) {
-    return listedBy === SELLER_COMPTE_PRO;
+  if (SELLER_KEYS.includes(filterValue)) {
+    return sellers.includes(filterValue);
   }
 
   return listedBy === filterValue;
 }
 
 function isSellerExcluded(listedBy) {
-  const includesAnthony = listedBy === SELLER_ANTHONY || listedBy === SELLER_BOTH;
-  const includesJulien = listedBy === SELLER_JULIEN || listedBy === SELLER_BOTH;
-  const includesComptePro = listedBy === SELLER_COMPTE_PRO;
+  const sellers = getListedSellers(listedBy);
+  const includesAnthony = sellers.includes(SELLER_ANTHONY);
+  const includesJulien = sellers.includes(SELLER_JULIEN);
+  const includesComptePro = sellers.includes(SELLER_COMPTE_PRO);
 
   if (state.excludeAnthony && includesAnthony) {
     return true;

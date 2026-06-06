@@ -7,7 +7,7 @@ Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs.
 - Login 3 utilisateurs: Anthony, Julien et Compte pro
 - Liste des articles avec:
   - Photo
-  - Qui a mis en vente (Anthony, Julien, Compte pro ou Nous deux, avec badges colores)
+  - Qui a mis en vente (Anthony, Julien, Compte pro, ou plusieurs personnes cochees avec badges colores)
   - Stock total
   - Quantite en vente
   - Stock disponible (stock total - en vente)
