@@ -20,10 +20,10 @@
   <main class="layout">
     <section id="loginView" class="panel login-panel">
       <h1>Vinted Stocks</h1>
-      <p class="subtitle">Connexion Anthony / Julien</p>
+      <p class="subtitle">Connexion Anthony / Julien / Compte pro</p>
       <form id="loginForm" class="stacked-form">
         <label for="username">Utilisateur</label>
-        <input id="username" name="username" type="text" autocomplete="username" placeholder="anthony ou julien" required>
+        <input id="username" name="username" type="text" autocomplete="username" placeholder="anthony, julien ou compte pro" required>
 
         <label for="password">Mot de passe</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required>
@@ -32,7 +32,7 @@
       </form>
       <p id="loginError" class="message error hidden"></p>
       <p class="hint">
-        Utilisateurs: anthony et julien (hash configures dans config.js).
+        Utilisateurs: anthony, julien et compte pro (hash configures dans config.js).
       </p>
     </section>
 
@@ -83,6 +83,7 @@
                 <option value="all">Tous</option>
                 <option value="anthony">Anthony</option>
                 <option value="julien">Julien</option>
+                <option value="compte-pro">Compte pro</option>
                 <option value="both">Nous deux</option>
               </select>
             </label>
@@ -93,6 +94,10 @@
             <label class="check-label">
               <input id="excludeJulien" type="checkbox">
               Exclure Julien
+            </label>
+            <label class="check-label">
+              <input id="excludeComptePro" type="checkbox">
+              Exclure Compte pro
             </label>
             <label>
               Tri
@@ -172,6 +177,7 @@
                 <option value="">Personne</option>
                 <option value="anthony">Anthony</option>
                 <option value="julien">Julien</option>
+                <option value="compte-pro">Compte pro</option>
                 <option value="both">Nous deux</option>
               </select>
             </label>

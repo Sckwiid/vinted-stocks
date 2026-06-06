@@ -11,6 +11,7 @@
   --danger-soft: rgba(239, 68, 68, 0.16);
   --anthony: #fb7185;
   --julien: #38bdf8;
+  --compte-pro: #f59e0b;
 }
 
 * {
@@ -193,6 +194,11 @@ textarea {
 
 .seller-julien {
   background: var(--julien);
+}
+
+.seller-compte-pro {
+  background: var(--compte-pro);
+  color: #111827;
 }
 
 .seller-none {

@@ -5,6 +5,9 @@ window.APP_CONFIG = {
     },
     julien: {
       passwordHash: "5fde4b1f9e2420001fe7381cacae8c033d3661aec3fe26c9f5818638d9491818"
+    },
+    "compte-pro": {
+      passwordHash: ""
     }
   },
   sync: {

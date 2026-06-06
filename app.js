@@ -4,6 +4,7 @@ const DEFAULT_LOW_THRESHOLD = 3;
 const DEFAULT_SYNC_PATH = "vinted-stocks/shared/products";
 const SELLER_ANTHONY = "anthony";
 const SELLER_JULIEN = "julien";
+const SELLER_COMPTE_PRO = "compte-pro";
 const SELLER_BOTH = "both";
 
 const USERS = {
@@ -16,6 +17,11 @@ const USERS = {
     username: "julien",
     displayName: "Julien",
     badgeClass: "seller-julien"
+  },
+  "compte-pro": {
+    username: "compte-pro",
+    displayName: "Compte pro",
+    badgeClass: "seller-compte-pro"
   }
 };
 
@@ -30,6 +36,7 @@ const state = {
   sellerFilter: "all",
   excludeAnthony: false,
   excludeJulien: false,
+  excludeComptePro: false,
   stockZeroMode: "all",
   lowOnly: false,
   sort: "updatedDesc",
@@ -60,6 +67,7 @@ const refs = {
   sellerFilter: document.getElementById("sellerFilter"),
   excludeAnthony: document.getElementById("excludeAnthony"),
   excludeJulien: document.getElementById("excludeJulien"),
+  excludeComptePro: document.getElementById("excludeComptePro"),
   stockZeroFilter: document.getElementById("stockZeroFilter"),
   lowOnly: document.getElementById("lowOnly"),
   sortSelect: document.getElementById("sortSelect"),
@@ -113,6 +121,11 @@ function bindEvents() {
     renderTable();
   });
 
+  refs.excludeComptePro.addEventListener("change", (event) => {
+    state.excludeComptePro = event.target.checked;
+    renderTable();
+  });
+
   refs.stockZeroFilter.addEventListener("change", (event) => {
     state.stockZeroMode = event.target.value;
     renderTable();
@@ -147,8 +160,9 @@ function restoreSession() {
     return;
   }
 
-  if (USERS[saved]) {
-    state.user = USERS[saved];
+  const username = normalizeUsername(saved);
+  if (USERS[username]) {
+    state.user = USERS[username];
   }
 }
 
@@ -156,13 +170,13 @@ async function handleLogin(event) {
   event.preventDefault();
 
   const formData = new FormData(event.currentTarget);
-  const username = String(formData.get("username") || "").trim().toLowerCase();
+  const username = normalizeUsername(formData.get("username"));
   const password = String(formData.get("password") || "").trim();
 
   const user = USERS[username];
 
   if (!user) {
-    refs.loginError.textContent = "Utilisateur inconnu (utilise anthony ou julien).";
+    refs.loginError.textContent = "Utilisateur inconnu (utilise anthony, julien ou compte pro).";
     refs.loginError.classList.remove("hidden");
     return;
   }
@@ -258,7 +272,7 @@ async function handleAddProduct(event) {
   }
 
   if (listedQuantity > 0 && !listedBy) {
-    showStatus("Choisis Anthony, Julien ou Nous deux pour un article en vente.", "error");
+    showStatus("Choisis Anthony, Julien, Compte pro ou Nous deux pour un article en vente.", "error");
     return;
   }
 
@@ -449,7 +463,7 @@ async function buildDetailProductUpdate(product, form) {
   }
 
   if (listedQuantity > 0 && !listedBy) {
-    showStatus("Choisis Anthony, Julien ou Nous deux pour la mise en vente.", "error");
+    showStatus("Choisis Anthony, Julien, Compte pro ou Nous deux pour la mise en vente.", "error");
     return null;
   }
 
@@ -527,12 +541,15 @@ async function markProductSold(productId, salePrice = null) {
 
 function requestSoldBy(product) {
   const taggedSellers = getListedSellers(product.listedBy);
-  const availableSellers = taggedSellers.length > 0 ? taggedSellers : [SELLER_ANTHONY, SELLER_JULIEN];
+  const availableSellers = taggedSellers.length > 0
+    ? taggedSellers
+    : [SELLER_ANTHONY, SELLER_JULIEN, SELLER_COMPTE_PRO];
 
   const defaultSeller = availableSellers[0];
+  const sellerChoices = availableSellers.map(getSellerDisplayName).join(" ou ");
   const answer = window.prompt(
-    `Qui l'a vendu ? Tape ${availableSellers.join(" ou ")}.`,
-    defaultSeller
+    `Qui l'a vendu ? Tape ${sellerChoices}.`,
+    getSellerDisplayName(defaultSeller)
   );
 
   if (answer === null) {
@@ -550,12 +567,15 @@ function requestSoldBy(product) {
 }
 
 function normalizeSoldByValue(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = normalizeUsername(value);
   if (normalized === SELLER_ANTHONY || normalized === "a") {
     return SELLER_ANTHONY;
   }
   if (normalized === SELLER_JULIEN || normalized === "j") {
     return SELLER_JULIEN;
+  }
+  if (normalized === SELLER_COMPTE_PRO || normalized === "c" || normalized === "cp" || normalized === "pro") {
+    return SELLER_COMPTE_PRO;
   }
   return "";
 }
@@ -564,7 +584,7 @@ function getListedSellers(listedBy) {
   if (listedBy === SELLER_BOTH) {
     return [SELLER_ANTHONY, SELLER_JULIEN];
   }
-  if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN) {
+  if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN || listedBy === SELLER_COMPTE_PRO) {
     return [listedBy];
   }
   return [];
@@ -772,6 +792,7 @@ function renderDetailView() {
               <option value="" ${product.listedBy ? "" : "selected"}>Personne</option>
               <option value="anthony" ${product.listedBy === "anthony" ? "selected" : ""}>Anthony</option>
               <option value="julien" ${product.listedBy === "julien" ? "selected" : ""}>Julien</option>
+              <option value="compte-pro" ${product.listedBy === "compte-pro" ? "selected" : ""}>Compte pro</option>
               <option value="both" ${product.listedBy === "both" ? "selected" : ""}>Nous deux</option>
             </select>
           </label>
@@ -904,6 +925,10 @@ function renderSellerBadge(sellerKey) {
     return '<span class="seller-badge seller-julien">Julien</span>';
   }
 
+  if (sellerKey === SELLER_COMPTE_PRO) {
+    return '<span class="seller-badge seller-compte-pro">Compte pro</span>';
+  }
+
   return '<span class="seller-badge seller-none">Personne</span>';
 }
 
@@ -913,6 +938,12 @@ function getSellerDisplayName(sellerKey) {
   }
   if (sellerKey === SELLER_JULIEN) {
     return "Julien";
+  }
+  if (sellerKey === SELLER_COMPTE_PRO) {
+    return "Compte pro";
+  }
+  if (sellerKey === SELLER_BOTH) {
+    return "Nous deux";
   }
   return "Personne";
 }
@@ -1011,14 +1042,15 @@ function getProductImages(product) {
 }
 
 function normalizeListedByValue(value) {
-  if (value === SELLER_ANTHONY || value === SELLER_JULIEN || value === SELLER_BOTH) {
+  if (value === SELLER_ANTHONY || value === SELLER_JULIEN || value === SELLER_COMPTE_PRO || value === SELLER_BOTH) {
     return value;
   }
 
   if (Array.isArray(value)) {
-    const normalizedValues = value.map((item) => String(item).trim().toLowerCase());
+    const normalizedValues = value.map(normalizeUsername);
     const hasAnthony = normalizedValues.includes(SELLER_ANTHONY);
     const hasJulien = normalizedValues.includes(SELLER_JULIEN);
+    const hasComptePro = normalizedValues.includes(SELLER_COMPTE_PRO);
     if (hasAnthony && hasJulien) {
       return SELLER_BOTH;
     }
@@ -1028,16 +1060,22 @@ function normalizeListedByValue(value) {
     if (hasJulien) {
       return SELLER_JULIEN;
     }
+    if (hasComptePro) {
+      return SELLER_COMPTE_PRO;
+    }
     return "";
   }
 
   if (typeof value === "string") {
-    const lower = value.trim().toLowerCase();
+    const lower = normalizeUsername(value);
     if (lower === SELLER_ANTHONY) {
       return SELLER_ANTHONY;
     }
     if (lower === SELLER_JULIEN) {
       return SELLER_JULIEN;
+    }
+    if (lower === SELLER_COMPTE_PRO) {
+      return SELLER_COMPTE_PRO;
     }
     if (lower === SELLER_BOTH || lower === "nous deux") {
       return SELLER_BOTH;
@@ -1056,6 +1094,9 @@ function normalizeListedByValue(value) {
 function getSellerSearchTokens(listedBy) {
   if (listedBy === SELLER_BOTH) {
     return `${SELLER_ANTHONY} ${SELLER_JULIEN} nous deux`;
+  }
+  if (listedBy === SELLER_COMPTE_PRO) {
+    return "compte pro compte-pro compte_pro pro";
   }
   if (listedBy === SELLER_ANTHONY || listedBy === SELLER_JULIEN) {
     return listedBy;
@@ -1080,18 +1121,27 @@ function listedByMatchesFilter(listedBy, filterValue) {
     return listedBy === SELLER_JULIEN || listedBy === SELLER_BOTH;
   }
 
+  if (filterValue === SELLER_COMPTE_PRO) {
+    return listedBy === SELLER_COMPTE_PRO;
+  }
+
   return listedBy === filterValue;
 }
 
 function isSellerExcluded(listedBy) {
   const includesAnthony = listedBy === SELLER_ANTHONY || listedBy === SELLER_BOTH;
   const includesJulien = listedBy === SELLER_JULIEN || listedBy === SELLER_BOTH;
+  const includesComptePro = listedBy === SELLER_COMPTE_PRO;
 
   if (state.excludeAnthony && includesAnthony) {
     return true;
   }
 
   if (state.excludeJulien && includesJulien) {
+    return true;
+  }
+
+  if (state.excludeComptePro && includesComptePro) {
     return true;
   }
 
@@ -1374,6 +1424,17 @@ function formatDateTime(value) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function normalizeUsername(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const compact = normalized.replace(/[\s_-]+/g, "");
+
+  if (compact === "comptepro") {
+    return SELLER_COMPTE_PRO;
+  }
+
+  return normalized;
 }
 
 function getPasswordHashForUser(username) {

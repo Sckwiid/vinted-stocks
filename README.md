@@ -1,13 +1,13 @@
 # Vinted Stocks (GitHub Pages)
 
-Mini app statique pour gerer vos stocks Vinted a 2 utilisateurs.
+Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs.
 
 ## Fonctionnalites
 
-- Login 2 utilisateurs: Anthony et Julien
+- Login 3 utilisateurs: Anthony, Julien et Compte pro
 - Liste des articles avec:
   - Photo
-  - Qui a mis en vente (Anthony, Julien ou Nous deux, avec badges colores)
+  - Qui a mis en vente (Anthony, Julien, Compte pro ou Nous deux, avec badges colores)
   - Stock total
   - Quantite en vente
   - Stock disponible (stock total - en vente)
@@ -20,7 +20,7 @@ Mini app statique pour gerer vos stocks Vinted a 2 utilisateurs.
   - Mettre a jour la mise en vente
   - Supprimer un produit
 - Recherche, filtres et tris
-- Filtres avances: exclusion vendeur (Anthony/Julien) et gestion affichage stock 0
+- Filtres avances: exclusion vendeur (Anthony/Julien/Compte pro) et gestion affichage stock 0
 - Vue detail article avec galerie multi-images
 - Ajout d'articles sur une page dediee
 - Historique des prix de vente
@@ -31,8 +31,14 @@ Mini app statique pour gerer vos stocks Vinted a 2 utilisateurs.
 
 - `anthony`
 - `julien`
+- `compte pro` ou `compte-pro`
 
 Le login utilise des hash SHA-256 dans `config.js` (pas de mot de passe en clair dans le code).
+Sur GitHub Pages, le workflow peut generer ces hash depuis les GitHub Secrets:
+
+- `ANTHONY_PASSWORD`
+- `JULIEN_PASSWORD`
+- `COMPTE_PRO_PASSWORD`
 
 ## Lancer en local
 
@@ -54,7 +60,7 @@ python3 -m http.server 8080
 
 Puis ouvrir `http://localhost:8080`.
 
-## Partage entre plusieurs PC (Anthony + Julien)
+## Partage entre plusieurs PC (Anthony + Julien + Compte pro)
 
 Pour que les deux PC voient les memes stocks en temps reel:
 
@@ -78,7 +84,8 @@ Pour que les deux PC voient les memes stocks en temps reel:
 window.APP_CONFIG = {
   users: {
     anthony: { passwordHash: "..." },
-    julien: { passwordHash: "..." }
+    julien: { passwordHash: "..." },
+    "compte-pro": { passwordHash: "..." }
   },
   sync: {
     provider: "firebase",
