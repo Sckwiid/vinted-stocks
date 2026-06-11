@@ -25,6 +25,7 @@ Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs.
 - Ajout d'articles sur une page dediee
 - Historique des prix de vente
 - Sync partage multi-PC via Firebase Realtime Database (optionnel)
+- Bouton manuel `Pousser stock` pour forcer l'envoi complet du stock vers la sync cloud
 - Cache local `localStorage` (fallback)
 
 ## Utilisateurs
@@ -39,6 +40,18 @@ Sur GitHub Pages, le workflow peut generer ces hash depuis les GitHub Secrets:
 - `ANTHONY_PASSWORD`
 - `JULIEN_PASSWORD`
 - `COMPTE_PRO_PASSWORD`
+
+Pour la sync multi-appareils, le workflow peut aussi injecter la config Firebase depuis les GitHub Secrets:
+
+- `FIREBASE_API_KEY`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_DATABASE_URL`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET`
+- `FIREBASE_MESSAGING_SENDER_ID`
+- `FIREBASE_APP_ID`
+- `FIREBASE_PATH` (optionnel)
+- `FIREBASE_ENABLED` (optionnel, `true` ou `false`)
 
 ## Lancer en local
 
@@ -106,6 +119,11 @@ window.APP_CONFIG = {
 
 6. Deploy sur GitHub Pages.
 7. Le badge en haut doit afficher `Sync partage` sur chaque PC.
+
+Les changements de stock sont synchronises automatiquement quand Firebase est active.
+Le bouton `Pousser stock` sert a forcer l'envoi complet du stock local vers la base cloud.
+
+Important: GitHub Pages ne peut pas pousser le stock dans le repo GitHub directement sans exposer un token GitHub dans le navigateur. Pour garder une solution propre, GitHub sert le site et Firebase stocke les donnees partagees.
 
 ## Deploiement GitHub Pages
 

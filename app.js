@@ -56,6 +56,7 @@ const refs = {
   loginError: document.getElementById("loginError"),
   sessionBadge: document.getElementById("sessionBadge"),
   syncBadge: document.getElementById("syncBadge"),
+  manualSyncBtn: document.getElementById("manualSyncBtn"),
   goAddBtn: document.getElementById("goAddBtn"),
   homeView: document.getElementById("homeView"),
   addView: document.getElementById("addView"),
@@ -99,6 +100,9 @@ function bindEvents() {
   });
   refs.backHomeFromAdd.addEventListener("click", () => {
     showView("home");
+  });
+  refs.manualSyncBtn.addEventListener("click", () => {
+    void manualSyncProducts();
   });
   refs.addProductForm.addEventListener("submit", handleAddProduct);
 
@@ -653,6 +657,8 @@ function renderSyncBadge() {
     return;
   }
 
+  renderManualSyncButton();
+
   if (state.sync.mode !== "firebase") {
     refs.syncBadge.textContent = "Sync local";
     refs.syncBadge.className = "sync-badge sync-local";
@@ -673,6 +679,17 @@ function renderSyncBadge() {
 
   refs.syncBadge.textContent = "Sync partage";
   refs.syncBadge.className = "sync-badge sync-ok";
+}
+
+function renderManualSyncButton() {
+  if (!refs.manualSyncBtn) {
+    return;
+  }
+
+  refs.manualSyncBtn.textContent = state.sync.mode === "firebase" ? "Pousser stock" : "Sync non configuree";
+  refs.manualSyncBtn.title = state.sync.mode === "firebase"
+    ? "Forcer l'envoi de tout le stock vers la base cloud."
+    : "Configure Firebase pour synchroniser le stock entre les appareils.";
 }
 
 function renderStats() {
@@ -1233,6 +1250,29 @@ function sanitizeSyncPath(path) {
 function toRemoteProductMap(products) {
   const entries = products.map((product) => [product.id, product]);
   return Object.fromEntries(entries);
+}
+
+async function manualSyncProducts() {
+  if (state.sync.mode !== "firebase" || !state.sync.firebaseRef) {
+    showStatus("Sync cloud non configuree: active Firebase dans config.js ou via GitHub Secrets.", "error");
+    return;
+  }
+
+  try {
+    state.sync.ready = false;
+    state.sync.error = "";
+    renderSyncBadge();
+    await state.sync.firebaseRef.set(toRemoteProductMap(state.products));
+    state.sync.ready = true;
+    state.sync.error = "";
+    renderSyncBadge();
+    showStatus("Stock pousse sur la sync cloud.", "info");
+  } catch {
+    state.sync.ready = false;
+    state.sync.error = "firebase_manual_push_failed";
+    renderSyncBadge();
+    showStatus("Sync cloud en erreur: push manuel impossible.", "error");
+  }
 }
 
 async function setupSync() {
