@@ -12,7 +12,7 @@ window.APP_CONFIG = {
   },
   sync: {
     provider: "firebase",
-    enabled: true,
+    enabled: false,
     path: "vinted-stocks/shared/products",
     firebase: {
       apiKey: "",

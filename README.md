@@ -144,11 +144,24 @@ Dans ce cas:
 4. Lancer `Run workflow`.
 5. Recharger le site avec un hard refresh.
 
+### Si GitHub Actions affiche `in progress deployment`
+
+Ce n'est pas une erreur Firebase. GitHub Pages refuse juste de lancer deux deploiements en meme temps.
+
+Dans ce cas:
+
+1. Attendre 1 a 2 minutes que l'ancien deploiement se termine.
+2. Si ca reste bloque, ouvrir le run/deployment indique dans l'erreur et cliquer `Cancel workflow` ou `Cancel deployment`.
+3. Verifier que `Settings > Pages > Source` est bien sur `GitHub Actions`.
+4. Relancer `Actions > Deploy static content to Pages > Run workflow`.
+
+Le workflow est configure pour mettre les deploiements en file d'attente et eviter ce conflit sur les prochains runs.
+
 ## Deploiement GitHub Pages
 
 1. Pousser ces fichiers sur un repo GitHub (`main`).
 2. `Settings > Pages`.
-3. `Source: GitHub Actions` ou `Deploy from a branch` (les deux fonctionnent pour site statique).
+3. `Source: GitHub Actions` obligatoire si tu utilises les GitHub Secrets pour les mots de passe ou Firebase.
 4. Ouvrir l'URL Pages.
 
 ## Important (securite)
