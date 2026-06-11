@@ -41,7 +41,7 @@ Sur GitHub Pages, le workflow peut generer ces hash depuis les GitHub Secrets:
 - `JULIEN_PASSWORD`
 - `COMPTE_PRO_PASSWORD`
 
-Pour la sync multi-appareils, le workflow peut aussi injecter la config Firebase depuis les GitHub Secrets:
+Pour la sync multi-appareils, le workflow peut aussi injecter la config Firebase depuis les GitHub Secrets ou les GitHub Variables:
 
 - `FIREBASE_API_KEY`
 - `FIREBASE_AUTH_DOMAIN`
@@ -135,6 +135,7 @@ https://sckwiid.github.io/vinted-stocks/config.js
 
 La partie `sync` doit contenir `enabled: true` et les champs Firebase remplis.
 Si tu vois encore `enabled: false` et des valeurs vides, GitHub Pages publie le fichier brut du repo au lieu du fichier genere par GitHub Actions.
+Si tu vois `enabled: true` mais les champs Firebase vides, les valeurs `FIREBASE_*` ne sont pas accessibles au workflow: verifie qu'elles sont bien dans `Settings > Secrets and variables > Actions` avec exactement les noms listes plus haut, en `Secrets` ou en `Variables`.
 
 Dans ce cas:
 
