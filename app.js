@@ -659,15 +659,15 @@ function renderSyncBadge() {
 
   renderManualSyncButton();
 
-  if (state.sync.mode !== "firebase") {
-    refs.syncBadge.textContent = "Sync local";
-    refs.syncBadge.className = "sync-badge sync-local";
-    return;
-  }
-
   if (state.sync.error) {
     refs.syncBadge.textContent = "Sync erreur";
     refs.syncBadge.className = "sync-badge sync-error";
+    return;
+  }
+
+  if (state.sync.mode !== "firebase") {
+    refs.syncBadge.textContent = "Sync local";
+    refs.syncBadge.className = "sync-badge sync-local";
     return;
   }
 
@@ -686,10 +686,34 @@ function renderManualSyncButton() {
     return;
   }
 
-  refs.manualSyncBtn.textContent = state.sync.mode === "firebase" ? "Pousser stock" : "Sync non configuree";
-  refs.manualSyncBtn.title = state.sync.mode === "firebase"
-    ? "Forcer l'envoi de tout le stock vers la base cloud."
-    : "Configure Firebase pour synchroniser le stock entre les appareils.";
+  if (state.sync.mode === "firebase") {
+    refs.manualSyncBtn.textContent = "Pousser stock";
+    refs.manualSyncBtn.title = "Forcer l'envoi de tout le stock vers la base cloud.";
+    return;
+  }
+
+  if (state.sync.error) {
+    refs.manualSyncBtn.textContent = "Voir erreur sync";
+    refs.manualSyncBtn.title = getSyncErrorMessage(state.sync.error);
+    return;
+  }
+
+  refs.manualSyncBtn.textContent = "Sync non configuree";
+  refs.manualSyncBtn.title = "Configure Firebase pour synchroniser le stock entre les appareils.";
+}
+
+function getSyncErrorMessage(errorCode) {
+  const messages = {
+    firebase_sdk_missing: "SDK Firebase non charge. Verifie la connexion reseau et les scripts Firebase.",
+    firebase_config_invalid: "Configuration Firebase incomplete. Verifie FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_DATABASE_URL, FIREBASE_PROJECT_ID et FIREBASE_APP_ID.",
+    firebase_init_failed: "Initialisation Firebase impossible. Verifie les valeurs Firebase et l'URL databaseURL.",
+    firebase_read_failed: "Lecture Firebase refusee ou impossible. Verifie les regles Realtime Database.",
+    firebase_write_failed: "Ecriture Firebase refusee ou impossible. Verifie les regles Realtime Database.",
+    firebase_delete_failed: "Suppression Firebase refusee ou impossible. Verifie les regles Realtime Database.",
+    firebase_manual_push_failed: "Push manuel refuse ou impossible. Verifie les regles Realtime Database."
+  };
+
+  return messages[errorCode] || "Erreur de sync Firebase.";
 }
 
 function renderStats() {
@@ -1253,6 +1277,11 @@ function toRemoteProductMap(products) {
 }
 
 async function manualSyncProducts() {
+  if (state.sync.error) {
+    showStatus(getSyncErrorMessage(state.sync.error), "error");
+    return;
+  }
+
   if (state.sync.mode !== "firebase" || !state.sync.firebaseRef) {
     showStatus("Sync cloud non configuree: active Firebase dans config.js ou via GitHub Secrets.", "error");
     return;
@@ -1291,7 +1320,7 @@ async function setupSync() {
     state.sync.ready = false;
     state.sync.error = "firebase_sdk_missing";
     renderSyncBadge();
-    showStatus("Sync cloud indisponible: SDK Firebase non charge.", "error");
+    showStatus(getSyncErrorMessage(state.sync.error), "error");
     return;
   }
 
@@ -1300,7 +1329,7 @@ async function setupSync() {
     state.sync.ready = false;
     state.sync.error = "firebase_config_invalid";
     renderSyncBadge();
-    showStatus("Sync cloud desactive: configuration Firebase incomplete.", "error");
+    showStatus(getSyncErrorMessage(state.sync.error), "error");
     return;
   }
 
@@ -1345,7 +1374,7 @@ async function setupSync() {
         state.sync.ready = false;
         state.sync.error = "firebase_read_failed";
         renderSyncBadge();
-        showStatus("Sync cloud en erreur: lecture impossible.", "error");
+        showStatus(getSyncErrorMessage(state.sync.error), "error");
       }
     );
 
@@ -1358,7 +1387,7 @@ async function setupSync() {
     state.sync.error = "firebase_init_failed";
     state.sync.firebaseRef = null;
     renderSyncBadge();
-    showStatus("Sync cloud en erreur: verifie la config Firebase.", "error");
+    showStatus(getSyncErrorMessage(state.sync.error), "error");
   }
 }
 
@@ -1376,7 +1405,7 @@ async function syncUpsertProduct(product) {
     state.sync.ready = false;
     state.sync.error = "firebase_write_failed";
     renderSyncBadge();
-    showStatus("Sync cloud en erreur: ecriture impossible.", "error");
+    showStatus(getSyncErrorMessage(state.sync.error), "error");
   }
 }
 
@@ -1394,7 +1423,7 @@ async function syncDeleteProduct(productId) {
     state.sync.ready = false;
     state.sync.error = "firebase_delete_failed";
     renderSyncBadge();
-    showStatus("Sync cloud en erreur: suppression impossible.", "error");
+    showStatus(getSyncErrorMessage(state.sync.error), "error");
   }
 }
 
