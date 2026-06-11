@@ -569,6 +569,15 @@ th {
   font-weight: 500;
 }
 
+#statusMessage {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 30;
+  width: min(430px, calc(100vw - 2rem));
+  box-shadow: 0 16px 40px rgba(2, 8, 23, 0.42);
+}
+
 .error {
   background: rgba(248, 113, 113, 0.16);
   color: #fecaca;

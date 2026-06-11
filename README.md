@@ -125,6 +125,25 @@ Le bouton `Pousser stock` sert a forcer l'envoi complet du stock local vers la b
 
 Important: GitHub Pages ne peut pas pousser le stock dans le repo GitHub directement sans exposer un token GitHub dans le navigateur. Pour garder une solution propre, GitHub sert le site et Firebase stocke les donnees partagees.
 
+### Si le badge reste sur `Sync local`
+
+Ouvrir l'URL suivante dans le navigateur:
+
+```text
+https://sckwiid.github.io/vinted-stocks/config.js
+```
+
+La partie `sync` doit contenir `enabled: true` et les champs Firebase remplis.
+Si tu vois encore `enabled: false` et des valeurs vides, GitHub Pages publie le fichier brut du repo au lieu du fichier genere par GitHub Actions.
+
+Dans ce cas:
+
+1. Aller dans `Settings > Pages`.
+2. Mettre `Source` sur `GitHub Actions`.
+3. Aller dans `Actions > Deploy static content to Pages`.
+4. Lancer `Run workflow`.
+5. Recharger le site avec un hard refresh.
+
 ## Deploiement GitHub Pages
 
 1. Pousser ces fichiers sur un repo GitHub (`main`).

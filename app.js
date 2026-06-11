@@ -1278,12 +1278,12 @@ function toRemoteProductMap(products) {
 
 async function manualSyncProducts() {
   if (state.sync.error) {
-    showStatus(getSyncErrorMessage(state.sync.error), "error");
+    showSyncDiagnostic(getSyncErrorMessage(state.sync.error));
     return;
   }
 
   if (state.sync.mode !== "firebase" || !state.sync.firebaseRef) {
-    showStatus("Sync cloud non configuree: active Firebase dans config.js ou via GitHub Secrets.", "error");
+    showSyncDiagnostic(getSyncNotConfiguredMessage());
     return;
   }
 
@@ -1302,6 +1302,33 @@ async function manualSyncProducts() {
     renderSyncBadge();
     showStatus("Sync cloud en erreur: push manuel impossible.", "error");
   }
+}
+
+function showSyncDiagnostic(message) {
+  showStatus(message, "error");
+  window.alert(message);
+}
+
+function getSyncNotConfiguredMessage() {
+  const sync = window.APP_CONFIG && window.APP_CONFIG.sync ? window.APP_CONFIG.sync : null;
+
+  if (!sync) {
+    return "Sync non configuree: APP_CONFIG.sync est absent du config.js publie.";
+  }
+
+  if (sync.provider !== "firebase") {
+    return "Sync non configuree: APP_CONFIG.sync.provider doit etre \"firebase\".";
+  }
+
+  if (!sync.enabled) {
+    return "Sync non configuree: le config.js publie contient enabled:false. Mets Pages en mode GitHub Actions puis relance le workflow, ou remplis la config Firebase directement dans config.js.";
+  }
+
+  if (!isFirebaseConfigValid(sync.firebase || {})) {
+    return getSyncErrorMessage("firebase_config_invalid");
+  }
+
+  return "Sync non configuree: Firebase n'a pas ete initialise.";
 }
 
 async function setupSync() {
