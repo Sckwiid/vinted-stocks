@@ -24,7 +24,7 @@ Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs.
 - Vue detail article avec galerie multi-images
 - Ajout d'articles sur une page dediee
 - Historique des prix de vente
-- Sync partage multi-PC via Firebase Realtime Database (optionnel)
+- Sync partage multi-PC via Firebase Auth + Realtime Database
 - Bouton manuel `Pousser stock` pour forcer l'envoi complet du stock vers la sync cloud
 - Cache local `localStorage` (fallback)
 
@@ -34,15 +34,12 @@ Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs.
 - `julien`
 - `compte pro` ou `compte-pro`
 
-Le login utilise des hash SHA-256 dans `config.js` (pas de mot de passe en clair dans le code).
-Sur GitHub Pages, le workflow peut generer ces hash depuis les GitHub Secrets:
+Avec Firebase active, les mots de passe passent par Firebase Auth.
+GitHub Pages ne doit publier ni mot de passe, ni hash, ni cle privee.
 
-- `ANTHONY_PASSWORD`
-- `JULIEN_PASSWORD`
-- `COMPTE_PRO_PASSWORD`
+Pour la sync multi-appareils avec Firebase:
 
-Pour la sync multi-appareils, le workflow peut aussi injecter la config Firebase depuis les GitHub Secrets ou les GitHub Variables:
-
+- `FIREBASE_ENABLED`: `true`
 - `FIREBASE_API_KEY`
 - `FIREBASE_AUTH_DOMAIN`
 - `FIREBASE_DATABASE_URL`
@@ -50,18 +47,12 @@ Pour la sync multi-appareils, le workflow peut aussi injecter la config Firebase
 - `FIREBASE_STORAGE_BUCKET`
 - `FIREBASE_MESSAGING_SENDER_ID`
 - `FIREBASE_APP_ID`
-- `FIREBASE_PATH` (optionnel)
-- `FIREBASE_ENABLED` (optionnel, `true` ou `false`)
+
+Ces valeurs ne sont pas stockees dans le repo si tu les mets dans GitHub Secrets.
+Elles seront visibles dans le `config.js` genere par GitHub Pages, car un site statique doit les envoyer au navigateur.
+La securite doit venir de Firebase Auth + des regles Realtime Database.
 
 ## Lancer en local
-
-Avant de tester, renseigner les hash dans `config.js`.
-
-Exemple pour generer un hash SHA-256:
-
-```bash
-printf 'mon_mot_de_passe' | shasum -a 256
-```
 
 Option 1: ouvrir directement `index.html` dans le navigateur.
 
@@ -73,57 +64,89 @@ python3 -m http.server 8080
 
 Puis ouvrir `http://localhost:8080`.
 
-## Partage entre plusieurs PC (Anthony + Julien + Compte pro)
+Pour tester la sync en local, mets temporairement `sync.enabled: true` et les champs `sync.firebase`
+dans `config.js`.
 
-Pour que les deux PC voient les memes stocks en temps reel:
+Le fallback par hash dans `config.js` existe seulement pour un test local hors prod.
+Ne pousse pas de hash de mot de passe dans un repo public.
 
-1. Creer un projet Firebase.
-2. Activer `Realtime Database` (region de ton choix).
-3. Pour test rapide, mettre ces regles:
+## Partage entre plusieurs PC avec Firebase
+
+Le site GitHub Pages ne doit pas contenir de cle backend, token GitHub, mot de passe ou hash.
+Avec Firebase, la config web est publique par design. Elle ne suffit pas a lire/ecrire si les regles Firebase sont correctes.
+
+### 1. Creer les comptes Firebase Auth
+
+Dans Firebase Console:
+
+1. Aller dans `Authentication`.
+2. Activer `Email/Password`.
+3. Creer ces 3 utilisateurs:
+
+- `anthony@vinted-stocks.app`
+- `julien@vinted-stocks.app`
+- `compte-pro@vinted-stocks.app`
+
+Utilise les mots de passe que tu veux pour chacun.
+Recupere les `uid` des 3 utilisateurs dans Firebase Auth.
+
+### 2. Configurer Realtime Database
+
+Dans Realtime Database, mets des regles comme ca en remplacant les UID:
 
 ```json
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    "allowedUsers": {
+      "$uid": {
+        ".read": false,
+        ".write": false
+      }
+    },
+    "vinted-stocks": {
+      "shared": {
+        "products": {
+          ".read": "auth != null && root.child('allowedUsers').child(auth.uid).val() === true",
+          ".write": "auth != null && root.child('allowedUsers').child(auth.uid).val() === true"
+        }
+      }
+    }
   }
 }
 ```
 
-4. Recuperer la config Web Firebase (`apiKey`, `authDomain`, `databaseURL`, `projectId`, `appId`, etc.).
-5. Remplir `config.js`:
+Ensuite ajoute les UID autorises dans les donnees:
 
-```js
-window.APP_CONFIG = {
-  users: {
-    anthony: { passwordHash: "..." },
-    julien: { passwordHash: "..." },
-    "compte-pro": { passwordHash: "..." }
-  },
-  sync: {
-    provider: "firebase",
-    enabled: true,
-    path: "vinted-stocks/shared/products",
-    firebase: {
-      apiKey: "...",
-      authDomain: "...",
-      databaseURL: "...",
-      projectId: "...",
-      storageBucket: "...",
-      messagingSenderId: "...",
-      appId: "..."
-    }
+```json
+{
+  "allowedUsers": {
+    "UID_ANTHONY": true,
+    "UID_JULIEN": true,
+    "UID_COMPTE_PRO": true
   }
-};
+}
 ```
 
-6. Deploy sur GitHub Pages.
-7. Le badge en haut doit afficher `Sync partage` sur chaque PC.
+Sans cette whitelist, quelqu'un pourrait creer un compte Firebase et acceder a la base si tes regles sont trop larges.
 
-Les changements de stock sont synchronises automatiquement quand Firebase est active.
-Le bouton `Pousser stock` sert a forcer l'envoi complet du stock local vers la base cloud.
+### 3. Configurer GitHub Actions
 
-Important: GitHub Pages ne peut pas pousser le stock dans le repo GitHub directement sans exposer un token GitHub dans le navigateur. Pour garder une solution propre, GitHub sert le site et Firebase stocke les donnees partagees.
+Dans GitHub `Settings > Secrets and variables > Actions`, ajoute:
+
+- `FIREBASE_ENABLED`: `true`
+- `FIREBASE_API_KEY`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_DATABASE_URL`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET`
+- `FIREBASE_MESSAGING_SENDER_ID`
+- `FIREBASE_APP_ID`
+
+Relance ensuite `Actions > Deploy static content to Pages > Run workflow`.
+
+Le badge en haut doit afficher `Sync partage`.
+Les changements de stock sont synchronises automatiquement.
+Le bouton `Pousser stock` force l'envoi complet du stock local vers Firebase.
 
 ### Si le badge reste sur `Sync local`
 
@@ -133,9 +156,9 @@ Ouvrir l'URL suivante dans le navigateur:
 https://sckwiid.github.io/vinted-stocks/config.js
 ```
 
-La partie `sync` doit contenir `enabled: true` et les champs Firebase remplis.
-Si tu vois encore `enabled: false` et des valeurs vides, GitHub Pages publie le fichier brut du repo au lieu du fichier genere par GitHub Actions.
-Si tu vois `enabled: true` mais les champs Firebase vides, les valeurs `FIREBASE_*` ne sont pas accessibles au workflow: verifie qu'elles sont bien dans `Settings > Secrets and variables > Actions` avec exactement les noms listes plus haut, en `Secrets` ou en `Variables`.
+La partie `sync` doit contenir `provider: "firebase"`, `enabled: true` et les champs `firebase` remplis.
+Si tu vois encore `enabled: false`, GitHub Pages publie le fichier brut du repo ou le workflow ne recoit pas `FIREBASE_ENABLED=true`.
+Les `passwordHash` doivent rester vides sur GitHub Pages.
 
 Dans ce cas:
 
@@ -147,7 +170,7 @@ Dans ce cas:
 
 ### Si GitHub Actions affiche `in progress deployment`
 
-Ce n'est pas une erreur Firebase. GitHub Pages refuse juste de lancer deux deploiements en meme temps.
+Ce n'est pas une erreur de sync. GitHub Pages refuse juste de lancer deux deploiements en meme temps.
 
 Dans ce cas:
 
@@ -162,11 +185,18 @@ Le workflow est configure pour mettre les deploiements en file d'attente et evit
 
 1. Pousser ces fichiers sur un repo GitHub (`main`).
 2. `Settings > Pages`.
-3. `Source: GitHub Actions` obligatoire si tu utilises les GitHub Secrets pour les mots de passe ou Firebase.
+3. `Source: GitHub Actions` obligatoire si tu utilises les GitHub Secrets pour Firebase.
 4. Ouvrir l'URL Pages.
 
 ## Important (securite)
 
-Le login reste cote client (front-end). Ce n'est pas une auth serveur forte.
+Les valeurs Firebase web seront visibles dans le front apres build.
+C'est normal pour Firebase: la cle web identifie ton projet, elle ne doit pas etre utilisee comme un secret.
+La vraie protection est:
 
-Pour production, securiser les regles Firebase (pas `read/write=true`) et ajouter une vraie auth serveur.
+- Firebase Auth
+- regles Realtime Database strictes
+- whitelist des UID autorises
+
+Un login uniquement en JavaScript avec des hash publics ne protege pas vraiment les donnees.
+Pour le site public sans Worker, utilise Firebase Auth + regles strictes.
