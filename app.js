@@ -1282,7 +1282,7 @@ function getSyncConfig() {
 
   if (sync.provider === "api") {
     const baseUrl = sync.api && typeof sync.api.baseUrl === "string"
-      ? sync.api.baseUrl.trim().replace(/\/+$/g, "")
+      ? normalizeApiBaseUrl(sync.api.baseUrl)
       : "";
 
     return {
@@ -1293,6 +1293,26 @@ function getSyncConfig() {
   }
 
   return { enabled: false };
+}
+
+function normalizeApiBaseUrl(value) {
+  let url = String(value || "").trim();
+
+  if (!url) {
+    return "";
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+
+  url = url.replace(/\/+$/g, "");
+
+  if (!/\/api$/i.test(url)) {
+    url = `${url}/api`;
+  }
+
+  return url;
 }
 
 function isApiSyncEnabled() {
