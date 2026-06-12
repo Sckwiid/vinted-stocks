@@ -1,202 +1,179 @@
-# Vinted Stocks (GitHub Pages)
+# Vinted Stocks (GitHub Pages + Netlify API)
 
-Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs.
-
-## Fonctionnalites
-
-- Login 3 utilisateurs: Anthony, Julien et Compte pro
-- Liste des articles avec:
-  - Photo
-  - Qui a mis en vente (Anthony, Julien, Compte pro, ou plusieurs personnes cochees avec badges colores)
-  - Stock total
-  - Quantite en vente
-  - Stock disponible (stock total - en vente)
-  - Seuil de stock bas
-  - Lien article Vinted
-- Alerte visuelle rouge quand le stock disponible est bas
-- Ajout de nouveaux produits
-- Actions rapides par ligne:
-  - Ajouter du stock
-  - Mettre a jour la mise en vente
-  - Supprimer un produit
-- Recherche, filtres et tris
-- Filtres avances: exclusion vendeur (Anthony/Julien/Compte pro) et gestion affichage stock 0
-- Vue detail article avec galerie multi-images
-- Ajout d'articles sur une page dediee
-- Historique des prix de vente
-- Sync partage multi-PC via Firebase Auth + Realtime Database
-- Bouton manuel `Pousser stock` pour forcer l'envoi complet du stock vers la sync cloud
-- Cache local `localStorage` (fallback)
-
-## Utilisateurs
+Mini app statique pour gerer vos stocks Vinted a 3 utilisateurs:
 
 - `anthony`
 - `julien`
 - `compte pro` ou `compte-pro`
 
-Avec Firebase active, les mots de passe passent par Firebase Auth.
-GitHub Pages ne doit publier ni mot de passe, ni hash, ni cle privee.
+Le site GitHub Pages ne contient pas de mot de passe, pas de hash et pas de cle serveur.
+La sync passe par une API Netlify Function gratuite, avec stockage Netlify Blobs.
 
-Pour la sync multi-appareils avec Firebase:
+## Architecture
 
-- `FIREBASE_ENABLED`: `true`
-- `FIREBASE_API_KEY`
-- `FIREBASE_AUTH_DOMAIN`
-- `FIREBASE_DATABASE_URL`
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_STORAGE_BUCKET`
-- `FIREBASE_MESSAGING_SENDER_ID`
-- `FIREBASE_APP_ID`
+- GitHub Pages sert le frontend: `index.html`, `app.js`, `styles.css`, `config.js`.
+- Netlify expose une Function HTTPS gratuite.
+- Netlify Blobs stocke le JSON des articles.
+- Le frontend voit seulement `API_BASE_URL`, l'URL publique de l'API Netlify.
 
-Ces valeurs ne sont pas stockees dans le repo si tu les mets dans GitHub Secrets.
-Elles seront visibles dans le `config.js` genere par GitHub Pages, car un site statique doit les envoyer au navigateur.
-La securite doit venir de Firebase Auth + des regles Realtime Database.
+Endpoints:
 
-## Lancer en local
+- `POST /login`
+- `GET /products`
+- `PUT /products`
+- `PUT /products/:id`
+- `DELETE /products/:id`
 
-Option 1: ouvrir directement `index.html` dans le navigateur.
+## Setup Netlify gratuit
 
-Option 2: serveur local simple:
+### 1. Creer le site Netlify
+
+1. Va sur Netlify.
+2. Connecte ton compte GitHub.
+3. Cree un nouveau site depuis le repo `vinted-stocks`.
+4. Netlify detectera `netlify.toml`.
+
+Parametres attendus:
+
+- Build command: vide
+- Publish directory: `.`
+- Functions directory: `netlify/functions`
+
+### 2. Ajouter les variables d'environnement Netlify
+
+Dans Netlify:
+
+`Site configuration > Environment variables`
+
+Ajoute:
+
+- `ANTHONY_PASSWORD`: mot de passe Anthony
+- `JULIEN_PASSWORD`: mot de passe Julien
+- `COMPTE_PRO_PASSWORD`: mot de passe Compte pro
+- `SESSION_SECRET`: longue chaine aleatoire, 40+ caracteres
+
+Pour generer `SESSION_SECRET`:
 
 ```bash
-python3 -m http.server 8080
+openssl rand -base64 48
 ```
 
-Puis ouvrir `http://localhost:8080`.
+### 3. Deployer Netlify
 
-Pour tester la sync en local, mets temporairement `sync.enabled: true` et les champs `sync.firebase`
-dans `config.js`.
+Lance un deploy Netlify depuis l'interface.
 
-Le fallback par hash dans `config.js` existe seulement pour un test local hors prod.
-Ne pousse pas de hash de mot de passe dans un repo public.
+Ton API sera:
 
-## Partage entre plusieurs PC avec Firebase
+```text
+https://TON-SITE.netlify.app/api
+```
 
-Le site GitHub Pages ne doit pas contenir de cle backend, token GitHub, mot de passe ou hash.
-Avec Firebase, la config web est publique par design. Elle ne suffit pas a lire/ecrire si les regles Firebase sont correctes.
+Teste rapidement:
 
-### 1. Creer les comptes Firebase Auth
+```bash
+curl https://TON-SITE.netlify.app/api/products
+```
 
-Dans Firebase Console:
-
-1. Aller dans `Authentication`.
-2. Activer `Email/Password`.
-3. Creer ces 3 utilisateurs:
-
-- `anthony@vinted-stocks.app`
-- `julien@vinted-stocks.app`
-- `compte-pro@vinted-stocks.app`
-
-Utilise les mots de passe que tu veux pour chacun.
-Recupere les `uid` des 3 utilisateurs dans Firebase Auth.
-
-### 2. Configurer Realtime Database
-
-Dans Realtime Database, mets des regles comme ca en remplacant les UID:
+Sans token, tu dois recevoir:
 
 ```json
-{
-  "rules": {
-    "allowedUsers": {
-      "$uid": {
-        ".read": false,
-        ".write": false
-      }
-    },
-    "vinted-stocks": {
-      "shared": {
-        "products": {
-          ".read": "auth != null && root.child('allowedUsers').child(auth.uid).val() === true",
-          ".write": "auth != null && root.child('allowedUsers').child(auth.uid).val() === true"
-        }
-      }
-    }
-  }
-}
+{"error":"unauthorized"}
 ```
 
-Ensuite ajoute les UID autorises dans les donnees:
+## Setup GitHub Pages
 
-```json
-{
-  "allowedUsers": {
-    "UID_ANTHONY": true,
-    "UID_JULIEN": true,
-    "UID_COMPTE_PRO": true
-  }
-}
-```
+Dans GitHub `Settings > Secrets and variables > Actions`, mets:
 
-Sans cette whitelist, quelqu'un pourrait creer un compte Firebase et acceder a la base si tes regles sont trop larges.
+- `API_SYNC_ENABLED`: `true`
+- `API_BASE_URL`: `https://TON-SITE.netlify.app/api`
 
-### 3. Configurer GitHub Actions
+Ensuite:
 
-Dans GitHub `Settings > Secrets and variables > Actions`, ajoute:
+1. Va dans `Settings > Pages`.
+2. Mets `Source` sur `GitHub Actions`.
+3. Va dans `Actions > Deploy static content to Pages`.
+4. Lance `Run workflow`.
+5. Ouvre `https://sckwiid.github.io/vinted-stocks/`.
 
-- `FIREBASE_ENABLED`: `true`
-- `FIREBASE_API_KEY`
-- `FIREBASE_AUTH_DOMAIN`
-- `FIREBASE_DATABASE_URL`
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_STORAGE_BUCKET`
-- `FIREBASE_MESSAGING_SENDER_ID`
-- `FIREBASE_APP_ID`
+Le badge doit afficher `Sync partage`.
 
-Relance ensuite `Actions > Deploy static content to Pages > Run workflow`.
+## Verifier la config publique
 
-Le badge en haut doit afficher `Sync partage`.
-Les changements de stock sont synchronises automatiquement.
-Le bouton `Pousser stock` force l'envoi complet du stock local vers Firebase.
-
-### Si le badge reste sur `Sync local`
-
-Ouvrir l'URL suivante dans le navigateur:
+Ouvre:
 
 ```text
 https://sckwiid.github.io/vinted-stocks/config.js
 ```
 
-La partie `sync` doit contenir `provider: "firebase"`, `enabled: true` et les champs `firebase` remplis.
-Si tu vois encore `enabled: false`, GitHub Pages publie le fichier brut du repo ou le workflow ne recoit pas `FIREBASE_ENABLED=true`.
-Les `passwordHash` doivent rester vides sur GitHub Pages.
+Tu dois voir seulement:
 
-Dans ce cas:
+- `provider: "api"`
+- `enabled: true`
+- `api.baseUrl: "https://TON-SITE.netlify.app/api"`
 
-1. Aller dans `Settings > Pages`.
-2. Mettre `Source` sur `GitHub Actions`.
-3. Aller dans `Actions > Deploy static content to Pages`.
-4. Lancer `Run workflow`.
-5. Recharger le site avec un hard refresh.
+Tu ne dois pas voir:
 
-### Si GitHub Actions affiche `in progress deployment`
+- mot de passe
+- hash
+- token GitHub
+- cle serveur
 
-Ce n'est pas une erreur de sync. GitHub Pages refuse juste de lancer deux deploiements en meme temps.
+## Test local
 
-Dans ce cas:
+Lancer le frontend:
 
-1. Attendre 1 a 2 minutes que l'ancien deploiement se termine.
-2. Si ca reste bloque, ouvrir le run/deployment indique dans l'erreur et cliquer `Cancel workflow` ou `Cancel deployment`.
-3. Verifier que `Settings > Pages > Source` est bien sur `GitHub Actions`.
-4. Relancer `Actions > Deploy static content to Pages > Run workflow`.
+```bash
+python3 -m http.server 8080
+```
 
-Le workflow est configure pour mettre les deploiements en file d'attente et eviter ce conflit sur les prochains runs.
+Puis ouvrir:
 
-## Deploiement GitHub Pages
+```text
+http://localhost:8080
+```
 
-1. Pousser ces fichiers sur un repo GitHub (`main`).
-2. `Settings > Pages`.
-3. `Source: GitHub Actions` obligatoire si tu utilises les GitHub Secrets pour Firebase.
-4. Ouvrir l'URL Pages.
+Pour tester avec l'API Netlify deployee, mets temporairement dans `config.js`:
 
-## Important (securite)
+```js
+sync: {
+  provider: "api",
+  enabled: true,
+  api: {
+    baseUrl: "https://TON-SITE.netlify.app/api"
+  }
+}
+```
 
-Les valeurs Firebase web seront visibles dans le front apres build.
-C'est normal pour Firebase: la cle web identifie ton projet, elle ne doit pas etre utilisee comme un secret.
-La vraie protection est:
+Ne mets pas de secret dans `config.js`.
 
-- Firebase Auth
-- regles Realtime Database strictes
-- whitelist des UID autorises
+## Securite
 
-Un login uniquement en JavaScript avec des hash publics ne protege pas vraiment les donnees.
-Pour le site public sans Worker, utilise Firebase Auth + regles strictes.
+L'URL de l'API Netlify est publique, mais:
+
+- `/products` refuse les requetes sans token valide;
+- `PUT` et `DELETE` refusent les requetes sans token valide;
+- `/login` compare les mots de passe cote Netlify, jamais dans le navigateur;
+- `/login` bloque le bruteforce apres 8 erreurs en 15 minutes;
+- les IP de login rate-limit sont hashees, pas stockees en clair;
+- `SESSION_SECRET` reste dans Netlify.
+
+Si quelqu'un ouvre le code du site, il ne peut pas recuperer les mots de passe ni signer un token valide.
+
+## Si ca bloque
+
+### Le site affiche `Sync local`
+
+- Verifie `API_SYNC_ENABLED=true` dans GitHub Actions.
+- Verifie `API_BASE_URL=https://TON-SITE.netlify.app/api`.
+- Verifie que GitHub Pages utilise `Source: GitHub Actions`.
+- Relance le workflow Pages.
+
+### Login refuse
+
+- Verifie les variables Netlify `ANTHONY_PASSWORD`, `JULIEN_PASSWORD`, `COMPTE_PRO_PASSWORD`.
+- Redeploie Netlify apres modification des variables.
+
+### Stock inaccessible
+
+- Ouvre les logs Netlify Functions.
+- Verifie que l'URL finit bien par `/api`.
