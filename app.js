@@ -68,6 +68,7 @@ const refs = {
   backHomeFromAdd: document.getElementById("backHomeFromAdd"),
   logoutBtn: document.getElementById("logoutBtn"),
   addProductForm: document.getElementById("addProductForm"),
+  temuImportFile: document.getElementById("temuImportFile"),
   searchInput: document.getElementById("searchInput"),
   sellerFilter: document.getElementById("sellerFilter"),
   excludeAnthony: document.getElementById("excludeAnthony"),
@@ -108,6 +109,9 @@ function bindEvents() {
     void manualSyncProducts();
   });
   refs.addProductForm.addEventListener("submit", handleAddProduct);
+  refs.temuImportFile.addEventListener("change", (event) => {
+    void handleTemuImport(event);
+  });
 
   refs.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value.trim().toLowerCase();
@@ -283,6 +287,8 @@ async function handleAddProduct(event) {
   const listedQuantity = Math.max(0, Number(formData.get("listedQuantity") || 0));
   const listedBy = normalizeListedByValue(formData.getAll("listedBy"));
   const lowThreshold = Math.max(0, Number(formData.get("lowThreshold") || DEFAULT_LOW_THRESHOLD));
+  const purchasePriceInput = String(formData.get("purchasePrice") || "").trim();
+  const purchasePrice = purchasePriceInput ? parseMoneyValue(purchasePriceInput) : null;
   const articleLink = String(formData.get("articleLink") || "").trim();
   let images = [];
 
@@ -312,6 +318,11 @@ async function handleAddProduct(event) {
     return;
   }
 
+  if (purchasePriceInput && purchasePrice === null) {
+    showStatus("Le prix d'achat Temu doit etre un nombre valide.", "error");
+    return;
+  }
+
   const now = new Date().toISOString();
 
   const product = {
@@ -321,6 +332,7 @@ async function handleAddProduct(event) {
     listedQuantity,
     listedBy: listedQuantity > 0 ? listedBy : "",
     lowThreshold,
+    purchasePrice,
     articleLink,
     photo: images[0] || "",
     images,
@@ -340,6 +352,222 @@ async function handleAddProduct(event) {
   form.elements.lowThreshold.value = String(DEFAULT_LOW_THRESHOLD);
   showStatus("Produit ajoute.", "info");
   showView("home");
+}
+
+async function handleTemuImport(event) {
+  const file = event.target.files && event.target.files[0];
+
+  if (!file) {
+    return;
+  }
+
+  if (!state.user) {
+    showStatus("Connecte-toi avant d'importer un fichier Temu.", "error");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(await file.text());
+    const items = normalizeTemuImportPayload(payload);
+
+    if (items.length === 0) {
+      showStatus("Fichier Temu invalide: aucun article exploitable.", "error");
+      return;
+    }
+
+    const result = importTemuItems(items);
+    persistProductsCache();
+
+    for (const product of result.touchedProducts) {
+      await syncUpsertProduct(product);
+    }
+
+    render();
+    showStatus(
+      `Import Temu termine: ${result.added} ajoute(s), ${result.updated} mis a jour.`,
+      "info"
+    );
+    showView("home");
+  } catch (error) {
+    showStatus(error && error.message ? error.message : "Impossible de lire le fichier Temu.", "error");
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function importTemuItems(items) {
+  const now = new Date().toISOString();
+  const touchedProducts = [];
+  let added = 0;
+  let updated = 0;
+
+  for (const item of items) {
+    const existingProduct = findExistingTemuProduct(item);
+
+    if (existingProduct) {
+      existingProduct.totalStock = Math.max(0, Number(existingProduct.totalStock || 0)) + item.quantity;
+      existingProduct.purchasePrice = item.purchasePrice !== null ? item.purchasePrice : existingProduct.purchasePrice;
+      existingProduct.articleLink = item.productUrl || existingProduct.articleLink;
+      existingProduct.images = mergeProductImages(existingProduct, item.imageUrl ? [item.imageUrl] : []);
+      existingProduct.photo = existingProduct.images[0] || "";
+      existingProduct.temu = buildTemuMeta(existingProduct.temu, item, now);
+      existingProduct.updatedAt = now;
+      touchedProducts.push(existingProduct);
+      updated += 1;
+      continue;
+    }
+
+    const images = item.imageUrl ? [item.imageUrl] : [];
+    const product = {
+      id: makeId(),
+      name: item.title || "Article Temu",
+      totalStock: item.quantity,
+      listedQuantity: 0,
+      listedBy: "",
+      lowThreshold: DEFAULT_LOW_THRESHOLD,
+      purchasePrice: item.purchasePrice,
+      articleLink: item.productUrl,
+      photo: images[0] || "",
+      images,
+      saleHistory: [],
+      temu: buildTemuMeta({}, item, now),
+      createdBy: state.user.username,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    state.products.unshift(product);
+    touchedProducts.push(product);
+    added += 1;
+  }
+
+  return { added, updated, touchedProducts };
+}
+
+function normalizeTemuImportPayload(payload) {
+  const rawItems = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload && payload.items)
+      ? payload.items
+      : [];
+
+  return rawItems
+    .map(normalizeTemuImportItem)
+    .filter(Boolean);
+}
+
+function normalizeTemuImportItem(rawItem) {
+  if (!rawItem || typeof rawItem !== "object") {
+    return null;
+  }
+
+  const title = String(
+    rawItem.title
+      || rawItem.name
+      || rawItem.productTitle
+      || rawItem.itemTitle
+      || ""
+  ).trim();
+  const quantity = parsePositiveInteger(
+    rawItem.quantity
+      || rawItem.qty
+      || rawItem.count
+      || 1
+  );
+  const purchasePrice = parseMoneyValue(
+    rawItem.purchasePrice
+      ?? rawItem.unitPurchasePrice
+      ?? rawItem.price
+      ?? rawItem.unitPrice
+      ?? null
+  );
+  const productUrl = normalizeOptionalHttpUrl(
+    rawItem.productUrl
+      || rawItem.articleLink
+      || rawItem.link
+      || rawItem.url
+      || ""
+  );
+  const imageUrl = normalizeOptionalImageUrl(
+    rawItem.imageUrl
+      || rawItem.image
+      || rawItem.photo
+      || rawItem.thumbnail
+      || ""
+  );
+
+  if (!title && !productUrl) {
+    return null;
+  }
+
+  return {
+    title: title || "Article Temu",
+    quantity,
+    purchasePrice,
+    productUrl,
+    imageUrl,
+    orderId: String(rawItem.orderId || rawItem.orderNumber || "").trim(),
+    orderDate: String(rawItem.orderDate || rawItem.date || "").trim(),
+    currency: String(rawItem.currency || "EUR").trim() || "EUR"
+  };
+}
+
+function findExistingTemuProduct(item) {
+  const productUrlKey = normalizeUrlForCompare(item.productUrl);
+
+  if (productUrlKey) {
+    const byUrl = state.products.find((product) => {
+      return normalizeUrlForCompare(product.articleLink) === productUrlKey
+        || normalizeUrlForCompare(product.temu && product.temu.productUrl) === productUrlKey;
+    });
+
+    if (byUrl) {
+      return byUrl;
+    }
+  }
+
+  if (!item.orderId || !item.title) {
+    return null;
+  }
+
+  const titleKey = normalizeTextForCompare(item.title);
+  return state.products.find((product) => {
+    return product.temu
+      && product.temu.orderId === item.orderId
+      && normalizeTextForCompare(product.name) === titleKey;
+  }) || null;
+}
+
+function buildTemuMeta(currentMeta, item, importedAt) {
+  const previous = currentMeta && typeof currentMeta === "object" ? currentMeta : {};
+
+  return {
+    ...previous,
+    productUrl: item.productUrl || previous.productUrl || "",
+    imageUrl: item.imageUrl || previous.imageUrl || "",
+    purchasePrice: item.purchasePrice !== null ? item.purchasePrice : (previous.purchasePrice ?? null),
+    currency: item.currency || previous.currency || "EUR",
+    orderId: item.orderId || previous.orderId || "",
+    orderDate: item.orderDate || previous.orderDate || "",
+    importedAt
+  };
+}
+
+function updateTemuMetaFromProduct(currentMeta, purchasePrice, productUrl) {
+  if (!currentMeta || typeof currentMeta !== "object") {
+    return undefined;
+  }
+
+  return {
+    ...currentMeta,
+    purchasePrice,
+    productUrl: productUrl || currentMeta.productUrl || ""
+  };
+}
+
+function mergeProductImages(product, imagesToAdd) {
+  return [...new Set([...getProductImages(product), ...imagesToAdd].filter(Boolean))];
 }
 
 async function handleTableClick(event) {
@@ -477,6 +705,8 @@ async function buildDetailProductUpdate(product, form) {
   const listedQuantity = Math.max(0, Number(formData.get("detailListedQuantity") || 0));
   const listedBy = normalizeListedByValue(formData.getAll("detailListedBy"));
   const lowThreshold = Math.max(0, Number(formData.get("detailLowThreshold") || DEFAULT_LOW_THRESHOLD));
+  const purchasePriceInput = String(formData.get("detailPurchasePrice") || "").trim();
+  const purchasePrice = purchasePriceInput ? parseMoneyValue(purchasePriceInput) : null;
   const articleLink = String(formData.get("detailArticleLink") || "").trim();
   let newImages = [];
 
@@ -510,13 +740,20 @@ async function buildDetailProductUpdate(product, form) {
     return null;
   }
 
+  if (purchasePriceInput && purchasePrice === null) {
+    showStatus("Le prix d'achat Temu doit etre un nombre valide.", "error");
+    return null;
+  }
+
   return {
     name,
     totalStock,
     listedQuantity,
     listedBy: listedQuantity > 0 ? listedBy : "",
     lowThreshold,
+    purchasePrice,
     articleLink,
+    temu: updateTemuMetaFromProduct(product.temu, purchasePrice, articleLink),
     images,
     photo: images[0] || ""
   };
@@ -785,6 +1022,7 @@ function renderTable() {
           <td>
             <strong>${escapeHtml(product.name)}</strong><br>
             <small>Ajoute par ${escapeHtml(product.createdBy || "-")}</small>
+            ${renderPurchasePriceLine(product)}
           </td>
           <td>${sellerBadge}</td>
           <td>${product.totalStock}</td>
@@ -878,8 +1116,12 @@ function renderDetailView() {
             <input name="detailLowThreshold" type="number" min="0" value="${product.lowThreshold}" required>
           </label>
           <label>
-            Lien Vinted
-            <input name="detailArticleLink" type="url" value="${escapeHtml(product.articleLink)}" placeholder="https://www.vinted.fr/...">
+            Prix d'achat Temu
+            <input name="detailPurchasePrice" type="number" min="0" step="0.01" value="${formatNumberInputValue(product.purchasePrice)}" placeholder="Optionnel">
+          </label>
+          <label>
+            Lien Temu
+            <input name="detailArticleLink" type="url" value="${escapeHtml(product.articleLink)}" placeholder="https://www.temu.com/...">
           </label>
           <label>
             Ajouter images URL
@@ -952,7 +1194,10 @@ function renderSaleHistory(product) {
 
 function getVisibleProducts() {
   const filtered = state.products.filter((product) => {
-    const haystack = `${product.name} ${product.articleLink} ${getSellerSearchTokens(product.listedBy)}`.toLowerCase();
+    const temuTokens = product.temu
+      ? `${product.temu.orderId || ""} ${product.temu.productUrl || ""}`
+      : "";
+    const haystack = `${product.name} ${product.articleLink} ${temuTokens} ${getSellerSearchTokens(product.listedBy)}`.toLowerCase();
 
     const matchesSearch = !state.search || haystack.includes(state.search);
     const matchesSeller = listedByMatchesFilter(product.listedBy, state.sellerFilter);
@@ -1014,6 +1259,14 @@ function renderSingleSellerBadge(sellerKey) {
   }
 
   return `<span class="seller-badge ${user.badgeClass}">${escapeHtml(user.displayName)}</span>`;
+}
+
+function renderPurchasePriceLine(product) {
+  if (product.purchasePrice === null || product.purchasePrice === undefined) {
+    return "";
+  }
+
+  return `<br><small>Achat Temu: ${escapeHtml(formatPrice(product.purchasePrice))}</small>`;
 }
 
 function renderSellerCheckbox(name, sellerKey, selectedSellers) {
@@ -1079,6 +1332,8 @@ function normalizeProduct(rawProduct) {
   const totalStock = Math.max(0, Number(rawProduct.totalStock || 0));
   const listedQuantity = Math.max(0, Number(rawProduct.listedQuantity || 0));
   const images = normalizeImages(rawProduct);
+  const purchasePrice = parseMoneyValue(rawProduct.purchasePrice ?? rawProduct.temu?.purchasePrice ?? null);
+  const articleLink = String(rawProduct.articleLink || rawProduct.temu?.productUrl || "").trim();
 
   return {
     id: String(rawProduct.id || makeId()),
@@ -1087,13 +1342,35 @@ function normalizeProduct(rawProduct) {
     listedQuantity: Math.min(listedQuantity, totalStock),
     listedBy: normalizeListedByValue(rawProduct.listedBy),
     lowThreshold: Math.max(0, Number(rawProduct.lowThreshold || DEFAULT_LOW_THRESHOLD)),
-    articleLink: String(rawProduct.articleLink || "").trim(),
+    purchasePrice,
+    articleLink,
     photo: images[0] || "",
     images,
     saleHistory: normalizeSaleHistory(rawProduct.saleHistory),
+    temu: normalizeTemuMeta(rawProduct.temu, { purchasePrice, articleLink }),
     createdBy: String(rawProduct.createdBy || "").trim(),
     createdAt: String(rawProduct.createdAt || new Date().toISOString()),
     updatedAt: String(rawProduct.updatedAt || rawProduct.createdAt || new Date().toISOString())
+  };
+}
+
+function normalizeTemuMeta(rawMeta, fallback = {}) {
+  if (!rawMeta || typeof rawMeta !== "object") {
+    return undefined;
+  }
+
+  const purchasePrice = parseMoneyValue(rawMeta.purchasePrice ?? fallback.purchasePrice ?? null);
+  const productUrl = normalizeOptionalHttpUrl(rawMeta.productUrl || fallback.articleLink || "");
+  const imageUrl = normalizeOptionalImageUrl(rawMeta.imageUrl || "");
+
+  return {
+    productUrl,
+    imageUrl,
+    purchasePrice,
+    currency: String(rawMeta.currency || "EUR").trim() || "EUR",
+    orderId: String(rawMeta.orderId || "").trim(),
+    orderDate: String(rawMeta.orderDate || "").trim(),
+    importedAt: String(rawMeta.importedAt || "").trim()
   };
 }
 
@@ -1614,6 +1891,69 @@ function parseImageUrls(value) {
     .filter(Boolean);
 }
 
+function parseMoneyValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return null;
+  }
+
+  const normalized = text
+    .replace(/\s+/g, "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(",", ".");
+  const price = Number(normalized);
+  return Number.isFinite(price) && price >= 0 ? price : null;
+}
+
+function parsePositiveInteger(value) {
+  const match = String(value || "").match(/\d+/);
+  const quantity = match ? Number(match[0]) : Number(value);
+  return Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
+}
+
+function normalizeOptionalHttpUrl(value) {
+  const url = String(value || "").trim();
+  return url && isValidHttpUrl(url) ? url : "";
+}
+
+function normalizeOptionalImageUrl(value) {
+  const imageUrl = String(value || "").trim();
+  return imageUrl && isValidPhotoValue(imageUrl) ? imageUrl : "";
+}
+
+function normalizeUrlForCompare(value) {
+  const url = String(value || "").trim();
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    parsed.searchParams.sort();
+    return parsed.toString().replace(/\/+$/g, "").toLowerCase();
+  } catch {
+    return url.replace(/\/+$/g, "").toLowerCase();
+  }
+}
+
+function normalizeTextForCompare(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function formatNumberInputValue(value) {
+  return value === null || value === undefined ? "" : String(value);
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1646,12 +1986,12 @@ function isValidHttpUrl(text) {
 }
 
 function isValidPhotoValue(text) {
-  return isValidHttpUrl(text) || text.startsWith("data:image/");
+  const value = String(text || "");
+  return isValidHttpUrl(value) || value.startsWith("data:image/");
 }
 
 function parseSalePrice(value) {
-  const normalized = String(value || "").trim().replace(",", ".");
-  const price = Number(normalized);
+  const price = parseMoneyValue(value);
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 

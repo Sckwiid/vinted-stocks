@@ -146,6 +146,41 @@ sync: {
 
 Ne mets pas de secret dans `config.js`.
 
+## Import commandes Temu
+
+Le site peut importer un fichier JSON exporte par une extension navigateur.
+
+Format attendu:
+
+```json
+{
+  "source": "temu-orders-extension",
+  "schemaVersion": 1,
+  "exportedAt": "2026-06-13T12:00:00.000Z",
+  "items": [
+    {
+      "title": "Soutien-gorge bandeau noir",
+      "purchasePrice": 1.76,
+      "quantity": 2,
+      "imageUrl": "https://...",
+      "productUrl": "https://www.temu.com/...",
+      "orderId": "PO-123",
+      "orderDate": "2026-06-13",
+      "currency": "EUR"
+    }
+  ]
+}
+```
+
+Champs obligatoires par article:
+
+- `title` ou `productUrl`
+- `quantity` est optionnel et vaut `1` par defaut
+- `purchasePrice` est optionnel
+- `imageUrl`, `productUrl`, `orderId`, `orderDate` et `currency` sont optionnels
+
+L'import fusionne avec un article existant si le lien Temu correspond deja.
+
 ## Securite
 
 L'URL de l'API Netlify est publique, mais:

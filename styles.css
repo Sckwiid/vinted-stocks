@@ -264,6 +264,30 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.import-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(240px, 0.7fr);
+  gap: 0.9rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.import-panel .hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.import-file-label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+code {
+  color: #ccfbf1;
+}
+
 .product-form label,
 .toolbar label {
   display: grid;
@@ -605,7 +629,8 @@ th {
 
   .product-form,
   .toolbar,
-  .add-product-form {
+  .add-product-form,
+  .import-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -633,7 +658,8 @@ th {
   .stats-grid,
   .product-form,
   .toolbar,
-  .add-product-form {
+  .add-product-form,
+  .import-panel {
     grid-template-columns: 1fr;
   }
 
