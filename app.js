@@ -499,6 +499,10 @@ function normalizeTemuImportItem(rawItem) {
   const variant = normalizeTemuVariant(rawItem.variant || rawItem.option || rawItem.options || "");
   const color = normalizeTemuColor(rawItem.color || rawItem.colour || variant);
 
+  if (title && isInvalidTemuImportTitle(title)) {
+    return null;
+  }
+
   if (!title && !productUrl) {
     return null;
   }
@@ -517,6 +521,20 @@ function normalizeTemuImportItem(rawItem) {
     importKey: String(rawItem.importKey || "").trim(),
     currency: String(rawItem.currency || "EUR").trim() || "EUR"
   };
+}
+
+function isInvalidTemuImportTitle(title) {
+  const text = normalizeTextForCompare(title);
+
+  return !text
+    || text === "apercu"
+    || text === "ouvrir dans un nouvel onglet"
+    || text.startsWith("la taille ")
+    || text.includes(" tour de buste")
+    || text.includes(" tour de taille")
+    || text.includes(" tour de hanches")
+    || text.includes(" hauteur: ")
+    || text.includes(" identique a fr");
 }
 
 function findExistingTemuProduct(item) {
@@ -600,6 +618,11 @@ async function handleTableClick(event) {
 
   const action = button.dataset.action;
   const productId = button.dataset.id;
+
+  if (action === "copyLink") {
+    await copyTextToClipboard(button.dataset.link || "");
+    return;
+  }
 
   if (action === "adjustStock") {
     const delta = Number(button.dataset.delta || 0);
@@ -1079,7 +1102,7 @@ function renderTable() {
 
       const displayArticleLink = getDisplayArticleLink(product);
       const articleCell = displayArticleLink
-        ? `<a href="${escapeHtml(displayArticleLink)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>`
+        ? `<button class="btn btn-outline btn-small" type="button" data-action="copyLink" data-link="${escapeHtml(displayArticleLink)}">Copier</button>`
         : "-";
 
       return `
@@ -1989,6 +2012,42 @@ function showUndoStatus(message, actionLabel, onUndo) {
   showStatus.timeoutId = window.setTimeout(() => {
     refs.statusMessage.classList.add("hidden");
   }, 5000);
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || "").trim();
+  if (!value) {
+    showStatus("Aucun lien a copier.", "error");
+    return;
+  }
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      copyTextWithFallback(value);
+    }
+    showStatus("Lien Order Temu copie.", "info");
+  } catch {
+    try {
+      copyTextWithFallback(value);
+      showStatus("Lien Order Temu copie.", "info");
+    } catch {
+      showStatus("Impossible de copier le lien.", "error");
+    }
+  }
+}
+
+function copyTextWithFallback(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 async function collectImagesFromForm(formData, urlsFieldName, filesFieldName) {

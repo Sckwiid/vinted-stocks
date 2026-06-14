@@ -45,8 +45,9 @@ async function scanTemuOrderItems() {
 
   const items = Array.from(itemsByMergeKey.values());
   hydrateMissingImages(items, imagePool);
+  const filteredItems = filterDetectedItems(items);
 
-  return items.map((item) => ({
+  return filteredItems.map((item) => ({
     ...item,
     importKey: buildItemKey(item)
   }));
@@ -100,11 +101,31 @@ function addCandidateItem(itemsByMergeKey, item) {
 }
 
 function hydrateMissingImages(items, imagePool) {
+  if (imagePool.length < items.length) {
+    return;
+  }
+
   items.forEach((item, index) => {
     if (!item.imageUrl && imagePool[index]) {
       item.imageUrl = imagePool[index];
     }
   });
+}
+
+function filterDetectedItems(items) {
+  return items.filter((item) => {
+    return !isInvalidDetectedItem(item);
+  });
+}
+
+function isInvalidDetectedItem(item) {
+  const title = cleanText(item && item.title ? item.title : "");
+
+  if (!title) {
+    return true;
+  }
+
+  return isProductInfoLine(title);
 }
 
 function collectVisibleOrderItems() {
@@ -184,15 +205,14 @@ function collectVisibleOrderItems() {
 function collectTextOrderItems() {
   const lines = getOrderTextLines();
   const orderId = findOrderIdFromUrl();
-  const items = [];
+  const itemsByKey = new Map();
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const priceIndex = findNextLineIndex(lines, index + 1, index + 6, isStandalonePriceLine);
-    if (priceIndex === -1) {
+  for (let priceIndex = 1; priceIndex < lines.length; priceIndex += 1) {
+    if (!isStandalonePriceLine(lines[priceIndex])) {
       continue;
     }
 
-    const title = cleanTitle(lines.slice(index, priceIndex).join(" "));
+    const title = cleanTitleFromLines(findTitleLinesBeforePrice(lines, priceIndex));
     if (!title) {
       continue;
     }
@@ -232,11 +252,13 @@ function collectTextOrderItems() {
       currency: "EUR"
     };
 
-    items.push(item);
-    index = sellerIndex;
+    const key = buildMergeKey(item);
+    if (!itemsByKey.has(key)) {
+      itemsByKey.set(key, item);
+    }
   }
 
-  return items;
+  return Array.from(itemsByKey.values());
 }
 
 function getOrderTextLines() {
@@ -261,6 +283,34 @@ function findNextLineIndex(lines, start, end, predicate) {
   }
 
   return -1;
+}
+
+function findTitleLinesBeforePrice(lines, priceIndex) {
+  const titleLines = [];
+
+  for (let index = priceIndex - 1; index >= 0 && titleLines.length < 5; index -= 1) {
+    const line = cleanText(lines[index]);
+
+    if (!line || isProductInfoLine(line)) {
+      continue;
+    }
+
+    if (isTitleBoundaryLine(line)) {
+      break;
+    }
+
+    titleLines.unshift(line);
+
+    if (titleLines.join(" ").length > 320) {
+      break;
+    }
+  }
+
+  return titleLines;
+}
+
+function cleanTitleFromLines(lines) {
+  return cleanTitle(lines.filter((line) => !isProductInfoLine(line)).join(" "));
 }
 
 function findProductRow(titleNode) {
@@ -595,7 +645,7 @@ function cleanTitle(value) {
     return "";
   }
 
-  if (looksLikeUiLine(line) || looksLikePriceLine(line) || isStandaloneQuantityLine(line)) {
+  if (looksLikeUiLine(line) || looksLikePriceLine(line) || isStandaloneQuantityLine(line) || isProductInfoLine(line)) {
     return "";
   }
 
@@ -748,11 +798,37 @@ function looksLikeQuantityLine(line) {
 }
 
 function looksLikeVariantLine(line) {
-  return /(taille de l['’]?[eé]tiquette|taille\s*:|couleur\s+|\/\s*taille|asian\s*[xsml]+)/i.test(line || "");
+  const text = cleanText(line || "");
+
+  if (!text || text.length > 160) {
+    return false;
+  }
+
+  return /(taille de l['’]?[eé]tiquette|\/\s*taille|taille\s*:|^couleur\s+|^color\s+|^【[^】]+】\s*\/|^\[[^\]]+\]\s*\/|asian\s*[xsml]+)/i.test(text);
 }
 
 function isSellerLine(line) {
   return /exp[eé]di[eé].*vendu par/i.test(line || "") || /vendu par/i.test(line || "");
+}
+
+function isProductInfoLine(line) {
+  const text = cleanText(line || "");
+
+  return /^la taille\b/i.test(text)
+    || /\btour de (?:buste|taille|hanches)\b/i.test(text)
+    || /\bhauteur\s*:\s*\d/i.test(text)
+    || /\bidentique\s+[aà]\s+fr/i.test(text)
+    || /^guide des tailles?/i.test(text);
+}
+
+function isTitleBoundaryLine(line) {
+  return looksLikeUiLine(line)
+    || isStandalonePriceLine(line)
+    || isStandaloneQuantityLine(line)
+    || looksLikeVariantLine(line)
+    || isSellerLine(line)
+    || /^ce qui est inclus$/i.test(line || "")
+    || /^remboursement de l['’]ajustement des prix$/i.test(line || "");
 }
 
 function isTemuProductImage(image) {
