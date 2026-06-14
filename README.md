@@ -150,6 +150,19 @@ Ne mets pas de secret dans `config.js`.
 
 Le site peut importer un fichier JSON exporte par une extension navigateur.
 
+L'extension locale est dans:
+
+```text
+temu-orders-extension
+```
+
+Pour l'installer:
+
+1. Ouvre `chrome://extensions`.
+2. Active `Mode developpeur`.
+3. Clique `Charger l'extension non empaquetee`.
+4. Selectionne le dossier `temu-orders-extension`.
+
 Format attendu:
 
 ```json
@@ -164,8 +177,12 @@ Format attendu:
       "quantity": 2,
       "imageUrl": "https://...",
       "productUrl": "https://www.temu.com/...",
+      "orderPageUrl": "https://www.temu.com/bg_order_detail.html?...",
       "orderId": "PO-123",
       "orderDate": "2026-06-13",
+      "variant": "rose / Taille de l'etiquette: M",
+      "color": "rose",
+      "importKey": "cle-stable-optionnelle",
       "currency": "EUR"
     }
   ]
@@ -177,9 +194,10 @@ Champs obligatoires par article:
 - `title` ou `productUrl`
 - `quantity` est optionnel et vaut `1` par defaut
 - `purchasePrice` est optionnel
-- `imageUrl`, `productUrl`, `orderId`, `orderDate` et `currency` sont optionnels
+- `imageUrl`, `productUrl`, `orderPageUrl`, `orderId`, `orderDate`, `variant`, `color`, `importKey` et `currency` sont optionnels
 
-L'import fusionne avec un article existant si le lien Temu correspond deja.
+L'import fusionne avec un article existant si `importKey` correspond deja, ou si le vrai lien produit Temu correspond deja.
+Le lien de page commande (`orderPageUrl`) est affiche, mais il n'est pas utilise pour fusionner les articles.
 
 ## Securite
 

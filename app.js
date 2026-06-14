@@ -408,7 +408,7 @@ function importTemuItems(items) {
     if (existingProduct) {
       existingProduct.totalStock = Math.max(0, Number(existingProduct.totalStock || 0)) + item.quantity;
       existingProduct.purchasePrice = item.purchasePrice !== null ? item.purchasePrice : existingProduct.purchasePrice;
-      existingProduct.articleLink = item.productUrl || existingProduct.articleLink;
+      existingProduct.articleLink = item.productUrl || item.orderPageUrl || existingProduct.articleLink;
       existingProduct.images = mergeProductImages(existingProduct, item.imageUrl ? [item.imageUrl] : []);
       existingProduct.photo = existingProduct.images[0] || "";
       existingProduct.temu = buildTemuMeta(existingProduct.temu, item, now);
@@ -427,7 +427,7 @@ function importTemuItems(items) {
       listedBy: "",
       lowThreshold: DEFAULT_LOW_THRESHOLD,
       purchasePrice: item.purchasePrice,
-      articleLink: item.productUrl,
+      articleLink: item.productUrl || item.orderPageUrl,
       photo: images[0] || "",
       images,
       saleHistory: [],
@@ -489,6 +489,7 @@ function normalizeTemuImportItem(rawItem) {
       || rawItem.url
       || ""
   );
+  const orderPageUrl = normalizeOptionalHttpUrl(rawItem.orderPageUrl || rawItem.pageUrl || "");
   const imageUrl = normalizeOptionalImageUrl(
     rawItem.imageUrl
       || rawItem.image
@@ -496,6 +497,8 @@ function normalizeTemuImportItem(rawItem) {
       || rawItem.thumbnail
       || ""
   );
+  const variant = normalizeTemuVariant(rawItem.variant || rawItem.option || rawItem.options || "");
+  const color = normalizeTemuColor(rawItem.color || rawItem.colour || variant);
 
   if (!title && !productUrl) {
     return null;
@@ -506,17 +509,31 @@ function normalizeTemuImportItem(rawItem) {
     quantity,
     purchasePrice,
     productUrl,
+    orderPageUrl,
     imageUrl,
     orderId: String(rawItem.orderId || rawItem.orderNumber || "").trim(),
     orderDate: String(rawItem.orderDate || rawItem.date || "").trim(),
+    variant,
+    color,
+    importKey: String(rawItem.importKey || "").trim(),
     currency: String(rawItem.currency || "EUR").trim() || "EUR"
   };
 }
 
 function findExistingTemuProduct(item) {
+  if (item.importKey) {
+    const byImportKey = state.products.find((product) => {
+      return product.temu && product.temu.importKey === item.importKey;
+    });
+
+    if (byImportKey) {
+      return byImportKey;
+    }
+  }
+
   const productUrlKey = normalizeUrlForCompare(item.productUrl);
 
-  if (productUrlKey) {
+  if (productUrlKey && isTemuProductUrl(item.productUrl)) {
     const byUrl = state.products.find((product) => {
       return normalizeUrlForCompare(product.articleLink) === productUrlKey
         || normalizeUrlForCompare(product.temu && product.temu.productUrl) === productUrlKey;
@@ -527,15 +544,17 @@ function findExistingTemuProduct(item) {
     }
   }
 
-  if (!item.orderId || !item.title) {
+  if (!item.orderId || !item.title || (!item.variant && !item.color)) {
     return null;
   }
 
   const titleKey = normalizeTextForCompare(item.title);
+  const variantKey = normalizeTextForCompare(item.variant || item.color);
   return state.products.find((product) => {
     return product.temu
       && product.temu.orderId === item.orderId
-      && normalizeTextForCompare(product.name) === titleKey;
+      && normalizeTextForCompare(product.name) === titleKey
+      && normalizeTextForCompare(product.temu.variant || product.temu.color) === variantKey;
   }) || null;
 }
 
@@ -545,11 +564,15 @@ function buildTemuMeta(currentMeta, item, importedAt) {
   return {
     ...previous,
     productUrl: item.productUrl || previous.productUrl || "",
+    orderPageUrl: item.orderPageUrl || previous.orderPageUrl || "",
     imageUrl: item.imageUrl || previous.imageUrl || "",
     purchasePrice: item.purchasePrice !== null ? item.purchasePrice : (previous.purchasePrice ?? null),
     currency: item.currency || previous.currency || "EUR",
     orderId: item.orderId || previous.orderId || "",
     orderDate: item.orderDate || previous.orderDate || "",
+    variant: item.variant || previous.variant || "",
+    color: item.color || previous.color || "",
+    importKey: item.importKey || previous.importKey || "",
     importedAt
   };
 }
@@ -1022,7 +1045,7 @@ function renderTable() {
           <td>
             <strong>${escapeHtml(product.name)}</strong><br>
             <small>Ajoute par ${escapeHtml(product.createdBy || "-")}</small>
-            ${renderPurchasePriceLine(product)}
+            ${renderTemuInfoLines(product)}
           </td>
           <td>${sellerBadge}</td>
           <td>${product.totalStock}</td>
@@ -1195,7 +1218,7 @@ function renderSaleHistory(product) {
 function getVisibleProducts() {
   const filtered = state.products.filter((product) => {
     const temuTokens = product.temu
-      ? `${product.temu.orderId || ""} ${product.temu.productUrl || ""}`
+      ? `${product.temu.orderId || ""} ${product.temu.productUrl || ""} ${product.temu.orderPageUrl || ""} ${product.temu.variant || ""} ${product.temu.color || ""}`
       : "";
     const haystack = `${product.name} ${product.articleLink} ${temuTokens} ${getSellerSearchTokens(product.listedBy)}`.toLowerCase();
 
@@ -1261,12 +1284,22 @@ function renderSingleSellerBadge(sellerKey) {
   return `<span class="seller-badge ${user.badgeClass}">${escapeHtml(user.displayName)}</span>`;
 }
 
-function renderPurchasePriceLine(product) {
-  if (product.purchasePrice === null || product.purchasePrice === undefined) {
-    return "";
+function renderTemuInfoLines(product) {
+  const lines = [];
+  const color = product.temu && product.temu.color ? product.temu.color : "";
+  const variant = product.temu && product.temu.variant ? product.temu.variant : "";
+
+  if (color) {
+    lines.push(`Couleur: ${color}`);
+  } else if (variant) {
+    lines.push(`Variante: ${variant}`);
   }
 
-  return `<br><small>Achat Temu: ${escapeHtml(formatPrice(product.purchasePrice))}</small>`;
+  if (product.purchasePrice !== null && product.purchasePrice !== undefined) {
+    lines.push(`Achat Temu: ${formatPrice(product.purchasePrice)}`);
+  }
+
+  return lines.map((line) => `<br><small>${escapeHtml(line)}</small>`).join("");
 }
 
 function renderSellerCheckbox(name, sellerKey, selectedSellers) {
@@ -1361,15 +1394,20 @@ function normalizeTemuMeta(rawMeta, fallback = {}) {
 
   const purchasePrice = parseMoneyValue(rawMeta.purchasePrice ?? fallback.purchasePrice ?? null);
   const productUrl = normalizeOptionalHttpUrl(rawMeta.productUrl || fallback.articleLink || "");
+  const orderPageUrl = normalizeOptionalHttpUrl(rawMeta.orderPageUrl || "");
   const imageUrl = normalizeOptionalImageUrl(rawMeta.imageUrl || "");
 
   return {
     productUrl,
+    orderPageUrl,
     imageUrl,
     purchasePrice,
     currency: String(rawMeta.currency || "EUR").trim() || "EUR",
     orderId: String(rawMeta.orderId || "").trim(),
     orderDate: String(rawMeta.orderDate || "").trim(),
+    variant: normalizeTemuVariant(rawMeta.variant || ""),
+    color: normalizeTemuColor(rawMeta.color || ""),
+    importKey: String(rawMeta.importKey || "").trim(),
     importedAt: String(rawMeta.importedAt || "").trim()
   };
 }
@@ -1925,6 +1963,22 @@ function normalizeOptionalImageUrl(value) {
   return imageUrl && isValidPhotoValue(imageUrl) ? imageUrl : "";
 }
 
+function normalizeTemuVariant(value) {
+  return String(value || "")
+    .replace(/[【】]/g, "")
+    .replace(/\s*:\s*/g, ": ")
+    .replace(/\s*\/\s*/g, " / ")
+    .trim();
+}
+
+function normalizeTemuColor(value) {
+  return normalizeTemuVariant(value)
+    .split("/")[0]
+    .replace(/^couleur\s+/i, "")
+    .replace(/^color\s+/i, "")
+    .trim();
+}
+
 function normalizeUrlForCompare(value) {
   const url = String(value || "").trim();
   if (!url) {
@@ -1988,6 +2042,35 @@ function isValidHttpUrl(text) {
 function isValidPhotoValue(text) {
   const value = String(text || "");
   return isValidHttpUrl(value) || value.startsWith("data:image/");
+}
+
+function isTemuProductUrl(value) {
+  if (!isValidHttpUrl(value)) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const isTemuHost = host === "temu.com"
+      || host.endsWith(".temu.com")
+      || host === "temu.fr"
+      || host.endsWith(".temu.fr");
+
+    if (!isTemuHost) {
+      return false;
+    }
+
+    return !/order|orders|bg_order_detail|checkout|cart/i.test(url.pathname)
+      && (
+        url.search.includes("goods_id=")
+        || url.search.includes("product_id=")
+        || /\/(?:goods|product)/i.test(url.pathname)
+        || /\.html$/i.test(url.pathname)
+      );
+  } catch {
+    return false;
+  }
 }
 
 function parseSalePrice(value) {
