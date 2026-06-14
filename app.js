@@ -409,7 +409,7 @@ function importTemuItems(items) {
     if (existingProduct) {
       existingProduct.totalStock = Math.max(0, Number(existingProduct.totalStock || 0)) + item.quantity;
       existingProduct.purchasePrice = item.purchasePrice !== null ? item.purchasePrice : existingProduct.purchasePrice;
-      existingProduct.articleLink = item.productUrl || existingProduct.articleLink;
+      existingProduct.articleLink = item.productUrl || item.orderPageUrl || existingProduct.articleLink;
       existingProduct.images = mergeProductImages(existingProduct, item.imageUrl ? [item.imageUrl] : []);
       existingProduct.photo = existingProduct.images[0] || "";
       existingProduct.temu = buildTemuMeta(existingProduct.temu, item, now);
@@ -427,7 +427,7 @@ function importTemuItems(items) {
       listedBy: "",
       lowThreshold: DEFAULT_LOW_THRESHOLD,
       purchasePrice: item.purchasePrice,
-      articleLink: item.productUrl || "",
+      articleLink: item.productUrl || item.orderPageUrl || "",
       photo: images[0] || "",
       images,
       saleHistory: [],
@@ -1187,7 +1187,7 @@ function renderDetailView() {
             <input name="detailPurchasePrice" type="number" min="0" step="0.01" value="${formatNumberInputValue(product.purchasePrice)}" placeholder="Optionnel">
           </label>
           <label>
-            Lien Temu
+            Lien Order Temu
             <input name="detailArticleLink" type="url" value="${escapeHtml(displayArticleLink)}" placeholder="https://www.temu.com/...">
           </label>
           <label>
@@ -1410,7 +1410,12 @@ function normalizeProduct(rawProduct) {
   const listedQuantity = Math.max(0, Number(rawProduct.listedQuantity || 0));
   const images = normalizeImages(rawProduct);
   const purchasePrice = parseMoneyValue(rawProduct.purchasePrice ?? rawProduct.temu?.purchasePrice ?? null);
-  const articleLink = String(rawProduct.articleLink || rawProduct.temu?.productUrl || "").trim();
+  const articleLink = String(
+    rawProduct.articleLink
+      || rawProduct.temu?.productUrl
+      || rawProduct.temu?.orderPageUrl
+      || ""
+  ).trim();
 
   return {
     id: String(rawProduct.id || makeId()),
@@ -1437,7 +1442,8 @@ function normalizeTemuMeta(rawMeta, fallback = {}) {
   }
 
   const purchasePrice = parseMoneyValue(rawMeta.purchasePrice ?? fallback.purchasePrice ?? null);
-  const productUrl = normalizeOptionalHttpUrl(rawMeta.productUrl || fallback.articleLink || "");
+  const fallbackProductUrl = isTemuProductUrl(fallback.articleLink) ? fallback.articleLink : "";
+  const productUrl = normalizeOptionalHttpUrl(rawMeta.productUrl || fallbackProductUrl);
   const orderPageUrl = normalizeOptionalHttpUrl(rawMeta.orderPageUrl || "");
   const imageUrl = normalizeOptionalImageUrl(rawMeta.imageUrl || "");
 
@@ -2184,12 +2190,7 @@ function isTemuOrderUrl(value) {
 }
 
 function getDisplayArticleLink(product) {
-  const link = String(product && product.articleLink ? product.articleLink : "").trim();
-  if (!link || isTemuOrderUrl(link)) {
-    return "";
-  }
-
-  return link;
+  return String(product && product.articleLink ? product.articleLink : "").trim();
 }
 
 function parseSalePrice(value) {
