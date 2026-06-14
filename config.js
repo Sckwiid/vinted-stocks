@@ -17,7 +17,7 @@ window.APP_CONFIG = {
     provider: "api",
     enabled: true,
     api: {
-      baseUrl: ""
+      baseUrl: "https://spectacular-daifuku-e7f572.netlify.app/api"
     }
   }
 };
