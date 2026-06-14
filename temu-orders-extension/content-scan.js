@@ -19,26 +19,37 @@
 async function scanTemuOrderItems() {
   const originalX = window.scrollX;
   const originalY = window.scrollY;
-  const itemsByKey = new Map();
+  const itemsByMergeKey = new Map();
+  const imagePool = [];
 
   try {
     for (const position of buildScanPositions()) {
       if (Math.abs(window.scrollY - position) > 24) {
         window.scrollTo({ top: position, left: originalX, behavior: "auto" });
-        await wait(80);
+        await wait(140);
       }
 
-      for (const item of collectVisibleOrderItems()) {
-        if (item && item.importKey && !itemsByKey.has(item.importKey)) {
-          itemsByKey.set(item.importKey, item);
+      for (const imageUrl of collectProductImageUrls()) {
+        if (!imagePool.includes(imageUrl)) {
+          imagePool.push(imageUrl);
         }
+      }
+
+      for (const item of [...collectVisibleOrderItems(), ...collectTextOrderItems()]) {
+        addCandidateItem(itemsByMergeKey, item);
       }
     }
   } finally {
     window.scrollTo({ top: originalY, left: originalX, behavior: "auto" });
   }
 
-  return Array.from(itemsByKey.values());
+  const items = Array.from(itemsByMergeKey.values());
+  hydrateMissingImages(items, imagePool);
+
+  return items.map((item) => ({
+    ...item,
+    importKey: buildItemKey(item)
+  }));
 }
 
 function buildScanPositions() {
@@ -52,14 +63,48 @@ function buildScanPositions() {
     return [0];
   }
 
-  const positions = [window.scrollY, 0];
-  const steps = maxScroll < 1800 ? 3 : 6;
+  const positions = [0];
+  const step = Math.max(360, Math.round(window.innerHeight * 0.55));
 
-  for (let index = 1; index <= steps; index += 1) {
-    positions.push(Math.round((maxScroll * index) / steps));
+  for (let position = step; position < maxScroll; position += step) {
+    positions.push(position);
   }
 
+  positions.push(maxScroll);
   return [...new Set(positions.map((position) => Math.max(0, Math.min(maxScroll, position))))];
+}
+
+function addCandidateItem(itemsByMergeKey, item) {
+  if (!item || !item.title || item.purchasePrice === null) {
+    return;
+  }
+
+  const key = buildMergeKey(item);
+  if (!key) {
+    return;
+  }
+
+  const existing = itemsByMergeKey.get(key);
+  if (!existing) {
+    itemsByMergeKey.set(key, item);
+    return;
+  }
+
+  existing.imageUrl = existing.imageUrl || item.imageUrl || "";
+  existing.productUrl = existing.productUrl || item.productUrl || "";
+  existing.orderPageUrl = existing.orderPageUrl || item.orderPageUrl || "";
+  existing.orderId = existing.orderId || item.orderId || "";
+  existing.orderDate = existing.orderDate || item.orderDate || "";
+  existing.variant = existing.variant || item.variant || "";
+  existing.color = existing.color || item.color || "";
+}
+
+function hydrateMissingImages(items, imagePool) {
+  items.forEach((item, index) => {
+    if (!item.imageUrl && imagePool[index]) {
+      item.imageUrl = imagePool[index];
+    }
+  });
 }
 
 function collectVisibleOrderItems() {
@@ -107,7 +152,7 @@ function collectVisibleOrderItems() {
     ) : "";
     const productUrl = findProductUrl(row);
 
-    if (!title || purchasePrice === null || !imageUrl) {
+    if (!title || purchasePrice === null) {
       continue;
     }
 
@@ -134,6 +179,88 @@ function collectVisibleOrderItems() {
   }
 
   return Array.from(itemsByKey.values());
+}
+
+function collectTextOrderItems() {
+  const lines = getOrderTextLines();
+  const orderId = findOrderIdFromUrl();
+  const items = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const priceIndex = findNextLineIndex(lines, index + 1, index + 6, isStandalonePriceLine);
+    if (priceIndex === -1) {
+      continue;
+    }
+
+    const title = cleanTitle(lines.slice(index, priceIndex).join(" "));
+    if (!title) {
+      continue;
+    }
+
+    const variantIndex = findNextLineIndex(lines, priceIndex + 1, priceIndex + 5, looksLikeVariantLine);
+    const quantityIndex = variantIndex === -1
+      ? -1
+      : findNextLineIndex(lines, variantIndex + 1, variantIndex + 4, looksLikeQuantityLine);
+    const sellerIndex = quantityIndex === -1
+      ? -1
+      : findNextLineIndex(lines, quantityIndex + 1, quantityIndex + 9, isSellerLine);
+
+    if (variantIndex === -1 || quantityIndex === -1 || sellerIndex === -1) {
+      continue;
+    }
+
+    const variant = cleanVariant(lines[variantIndex], title);
+    const purchasePrice = findPurchasePrice(lines[priceIndex]);
+    const quantity = findQuantity(lines[quantityIndex]);
+
+    if (!variant || purchasePrice === null) {
+      continue;
+    }
+
+    const item = {
+      title,
+      purchasePrice,
+      quantity,
+      imageUrl: "",
+      productUrl: "",
+      orderPageUrl: window.location.href,
+      orderId,
+      orderDate: "",
+      variant,
+      color: extractColorFromVariant(variant),
+      importKey: "",
+      currency: "EUR"
+    };
+
+    items.push(item);
+    index = sellerIndex;
+  }
+
+  return items;
+}
+
+function getOrderTextLines() {
+  const lines = cleanText(document.body.innerText || document.body.textContent || "")
+    .split("\n")
+    .map((line) => cleanText(line))
+    .filter(Boolean);
+  const stopIndex = lines.findIndex((line) => {
+    return /^(d[eé]tails de paiement|moyen de paiement|vous aimerez aussi|articles similaires|produits recommand[eé]s|recommandations?|pour vous|s[eé]lectionn[eé] pour vous|d[eé]couvrez aussi)$/i.test(line);
+  });
+
+  return stopIndex === -1 ? lines : lines.slice(0, stopIndex);
+}
+
+function findNextLineIndex(lines, start, end, predicate) {
+  const max = Math.min(lines.length, end);
+
+  for (let index = start; index < max; index += 1) {
+    if (predicate(lines[index])) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 function findProductRow(titleNode) {
@@ -190,6 +317,20 @@ function findProductImage(scope, source) {
   return beforeTitle[beforeTitle.length - 1] || candidates[0];
 }
 
+function collectProductImageUrls() {
+  return Array.from(document.querySelectorAll("img"))
+    .filter(isTemuProductImage)
+    .map((image) => normalizeImageUrl(
+      image.currentSrc
+        || image.src
+        || image.getAttribute("data-src")
+        || image.getAttribute("data-original")
+        || image.getAttribute("data-lazy-src")
+        || ""
+    ))
+    .filter(Boolean);
+}
+
 function findProductUrl(scope) {
   if (!scope || !scope.querySelectorAll) {
     return "";
@@ -216,11 +357,11 @@ function cleanTitle(value) {
     .map((part) => part.trim())
     .find(Boolean) || "";
 
-  if (line.length < 5 || line.length > 190) {
+  if (line.length < 5 || line.length > 340) {
     return "";
   }
 
-  if (looksLikeUiLine(line) || looksLikePriceLine(line) || looksLikeQuantityLine(line) || looksLikeVariantLine(line)) {
+  if (looksLikeUiLine(line) || looksLikePriceLine(line) || isStandaloneQuantityLine(line)) {
     return "";
   }
 
@@ -282,6 +423,14 @@ function findPurchasePrice(text) {
   return null;
 }
 
+function isStandalonePriceLine(line) {
+  return /^\d+(?:[,.]\d{1,2})?\s*(?:€|\beur\b)$/i.test(cleanText(line || ""));
+}
+
+function isStandaloneQuantityLine(line) {
+  return /^[x×]\s*\d+\b/i.test(cleanText(line || ""));
+}
+
 function findQuantity(text) {
   const value = cleanText(text || "");
   const patterns = [
@@ -333,6 +482,22 @@ function buildItemKey(item) {
   return parts.map(normalizeComparableText).join("|");
 }
 
+function buildMergeKey(item) {
+  const urlKey = normalizeUrlKey(item.productUrl);
+  const parts = urlKey
+    ? [urlKey, item.variant || item.color || "", item.purchasePrice === null ? "" : String(item.purchasePrice)]
+    : [
+      item.orderId || "",
+      item.title || "",
+      item.variant || "",
+      item.color || "",
+      item.purchasePrice === null ? "" : String(item.purchasePrice),
+      item.quantity || 1
+    ];
+
+  return parts.map(normalizeComparableText).join("|");
+}
+
 function looksLikeUiLine(line) {
   const text = cleanText(line || "");
 
@@ -350,6 +515,10 @@ function looksLikeQuantityLine(line) {
 
 function looksLikeVariantLine(line) {
   return /(taille de l['’]?[eé]tiquette|taille\s*:|couleur\s+|\/\s*taille|asian\s*[xsml]+)/i.test(line || "");
+}
+
+function isSellerLine(line) {
+  return /exp[eé]di[eé].*vendu par/i.test(line || "") || /vendu par/i.test(line || "");
 }
 
 function isTemuProductImage(image) {
