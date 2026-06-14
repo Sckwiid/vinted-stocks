@@ -29,6 +29,7 @@ const USERS = {
 
 const state = {
   products: [],
+  pendingTemuImport: [],
   user: null,
   view: "home",
   selectedProductId: null,
@@ -70,6 +71,12 @@ const refs = {
   logoutBtn: document.getElementById("logoutBtn"),
   addProductForm: document.getElementById("addProductForm"),
   temuImportFile: document.getElementById("temuImportFile"),
+  importReviewPanel: document.getElementById("importReviewPanel"),
+  importReviewSummary: document.getElementById("importReviewSummary"),
+  importReviewList: document.getElementById("importReviewList"),
+  importReviewEmpty: document.getElementById("importReviewEmpty"),
+  clearImportReviewBtn: document.getElementById("clearImportReviewBtn"),
+  confirmImportReviewBtn: document.getElementById("confirmImportReviewBtn"),
   searchInput: document.getElementById("searchInput"),
   sellerFilter: document.getElementById("sellerFilter"),
   excludeAnthony: document.getElementById("excludeAnthony"),
@@ -104,6 +111,10 @@ function bindEvents() {
     showView("add");
   });
   refs.backHomeFromAdd.addEventListener("click", () => {
+    if (state.pendingTemuImport.length > 0) {
+      showStatus("Valide ou annule l'import Temu avant de revenir au stock.", "error");
+      return;
+    }
     showView("home");
   });
   refs.manualSyncBtn.addEventListener("click", () => {
@@ -115,6 +126,15 @@ function bindEvents() {
   refs.addProductForm.addEventListener("submit", handleAddProduct);
   refs.temuImportFile.addEventListener("change", (event) => {
     void handleTemuImport(event);
+  });
+  refs.importReviewList.addEventListener("input", handleImportReviewInput);
+  refs.importReviewList.addEventListener("change", (event) => {
+    void handleImportReviewChange(event);
+  });
+  refs.importReviewList.addEventListener("click", handleImportReviewClick);
+  refs.clearImportReviewBtn.addEventListener("click", clearPendingTemuImport);
+  refs.confirmImportReviewBtn.addEventListener("click", () => {
+    void confirmPendingTemuImport();
   });
 
   refs.searchInput.addEventListener("input", (event) => {
@@ -262,6 +282,7 @@ async function handleLogin(event) {
 function handleLogout() {
   state.user = null;
   state.apiToken = "";
+  state.pendingTemuImport = [];
   localStorage.removeItem(STORAGE_SESSION_KEY);
   localStorage.removeItem(STORAGE_API_TOKEN_KEY);
   stopApiPolling();
@@ -380,22 +401,249 @@ async function handleTemuImport(event) {
       return;
     }
 
-    stopApiPolling();
-    const result = importTemuItems(items);
-    persistProductsCache();
-    await syncProductsSnapshot();
-
-    render();
-    showStatus(
-      `Import Temu termine: ${result.added} ajoute(s), ${result.updated} mis a jour.`,
-      "info"
-    );
-    showView("home");
+    state.pendingTemuImport = items.map(createPendingTemuImportItem);
+    showView("add");
+    showStatus(`${state.pendingTemuImport.length} article(s) Temu a valider avant ajout au stock.`, "info");
   } catch (error) {
     showStatus(error && error.message ? error.message : "Impossible de lire le fichier Temu.", "error");
   } finally {
     event.target.value = "";
   }
+}
+
+function createPendingTemuImportItem(item) {
+  return {
+    ...item,
+    draftId: makeId(),
+    quantity: Math.max(1, Number(item.quantity || 1)),
+    title: item.title || "Article Temu",
+    imageUrl: item.imageUrl || "",
+    productUrl: item.productUrl || "",
+    orderPageUrl: item.orderPageUrl || "",
+    variant: item.variant || "",
+    color: item.color || "",
+    purchasePrice: item.purchasePrice,
+    lowThreshold: DEFAULT_LOW_THRESHOLD,
+    listedQuantity: 0,
+    listedBy: ""
+  };
+}
+
+function handleImportReviewInput(event) {
+  const field = event.target.dataset.field;
+  if (!field) {
+    return;
+  }
+
+  const card = event.target.closest("[data-draft-id]");
+  const draft = card ? findPendingTemuImportItem(card.dataset.draftId) : null;
+  if (!draft) {
+    return;
+  }
+
+  const value = event.target.value;
+
+  if (field === "quantity") {
+    draft.quantity = Math.max(1, Number(value || 1));
+    updateImportReviewSummary();
+    return;
+  }
+
+  if (field === "purchasePrice") {
+    draft.purchasePrice = value.trim() ? parseMoneyValue(value) : null;
+    return;
+  }
+
+  if (field === "color") {
+    updateDraftColor(draft, value.trim());
+    return;
+  }
+
+  if (field === "orderPageUrl") {
+    draft.productUrl = "";
+    draft.orderPageUrl = value.trim();
+    return;
+  }
+
+  if (field === "imageUrl") {
+    draft.imageUrl = value.trim();
+    if (isValidPhotoValue(draft.imageUrl)) {
+      updateImportReviewImagePreview(card, draft);
+    }
+    return;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(draft, field)) {
+    draft[field] = value.trim();
+  }
+}
+
+async function handleImportReviewChange(event) {
+  if (event.target.dataset.field !== "imageFile") {
+    return;
+  }
+
+  const card = event.target.closest("[data-draft-id]");
+  const draft = card ? findPendingTemuImportItem(card.dataset.draftId) : null;
+  const file = event.target.files && event.target.files[0];
+
+  if (!draft || !(file instanceof File) || file.size <= 0) {
+    return;
+  }
+
+  try {
+    draft.imageUrl = await fileToDataUrl(file);
+    const imageInput = card.querySelector("[data-field='imageUrl']");
+    if (imageInput) {
+      imageInput.value = draft.imageUrl;
+    }
+    updateImportReviewImagePreview(card, draft);
+    showStatus("Image mise a jour dans la validation.", "info");
+  } catch {
+    showStatus("Impossible de lire cette image.", "error");
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function updateImportReviewImagePreview(card, draft) {
+  const media = card.querySelector(".import-review-media");
+  if (!media) {
+    return;
+  }
+
+  media.innerHTML = draft.imageUrl
+    ? `<img src="${escapeHtml(draft.imageUrl)}" alt="Image ${escapeHtml(draft.title)}">`
+    : '<div class="no-photo large">Pas image</div>';
+}
+
+function handleImportReviewClick(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button || button.dataset.action !== "removeImportDraft") {
+    return;
+  }
+
+  const card = button.closest("[data-draft-id]");
+  const draftId = card ? card.dataset.draftId : "";
+  state.pendingTemuImport = state.pendingTemuImport.filter((item) => item.draftId !== draftId);
+  renderImportReview();
+}
+
+function findPendingTemuImportItem(draftId) {
+  return state.pendingTemuImport.find((item) => item.draftId === draftId) || null;
+}
+
+function updateDraftColor(draft, color) {
+  draft.color = color;
+
+  if (!draft.variant) {
+    draft.variant = color;
+    return;
+  }
+
+  const parts = draft.variant.split("/");
+  parts[0] = color || parts[0] || "";
+  draft.variant = parts.map((part) => part.trim()).filter(Boolean).join(" / ");
+}
+
+function updateImportReviewSummary() {
+  const totalQuantity = state.pendingTemuImport.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0)), 0);
+  const existingCount = state.pendingTemuImport.filter((item) => Boolean(findExistingTemuProduct(item))).length;
+  refs.importReviewSummary.textContent = state.pendingTemuImport.length > 0
+    ? `${state.pendingTemuImport.length} article(s), ${totalQuantity} piece(s) a verifier. ${existingCount} deja present(s) seront fusionne(s).`
+    : "0 article en attente.";
+}
+
+function clearPendingTemuImport() {
+  if (state.pendingTemuImport.length === 0) {
+    return;
+  }
+
+  state.pendingTemuImport = [];
+  renderImportReview();
+  showStatus("Import Temu annule. Aucun article ajoute au stock.", "info");
+}
+
+async function confirmPendingTemuImport() {
+  if (state.pendingTemuImport.length === 0) {
+    showStatus("Aucun article Temu a valider.", "error");
+    return;
+  }
+
+  const items = [];
+
+  for (const draft of state.pendingTemuImport) {
+    const item = buildTemuItemFromDraft(draft);
+    if (!item) {
+      return;
+    }
+    items.push(item);
+  }
+
+  stopApiPolling();
+  const result = importTemuItems(items);
+  state.pendingTemuImport = [];
+  persistProductsCache();
+  let syncError = "";
+  try {
+    await syncProductsSnapshot();
+  } catch (error) {
+    syncError = error && error.message ? error.message : "Import ajoute en local, mais sync API echouee.";
+  }
+
+  showView("home");
+  showStatus(
+    syncError || `Import Temu valide: ${result.added} ajoute(s), ${result.updated} mis a jour.`,
+    syncError ? "error" : "info"
+  );
+}
+
+function buildTemuItemFromDraft(draft) {
+  const title = String(draft.title || "").trim();
+  const quantity = Math.max(1, Number(draft.quantity || 1));
+  const purchasePrice = draft.purchasePrice === null || draft.purchasePrice === undefined || draft.purchasePrice === ""
+    ? null
+    : parseMoneyValue(draft.purchasePrice);
+  const imageUrl = String(draft.imageUrl || "").trim();
+  const orderPageUrl = String(draft.orderPageUrl || draft.productUrl || "").trim();
+
+  if (!title) {
+    showStatus("Chaque article importe doit avoir un nom.", "error");
+    return null;
+  }
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    showStatus(`Quantite invalide pour ${title}.`, "error");
+    return null;
+  }
+
+  if (draft.purchasePrice !== null && draft.purchasePrice !== undefined && String(draft.purchasePrice).trim() && purchasePrice === null) {
+    showStatus(`Prix d'achat invalide pour ${title}.`, "error");
+    return null;
+  }
+
+  if (imageUrl && !isValidPhotoValue(imageUrl)) {
+    showStatus(`Image invalide pour ${title}.`, "error");
+    return null;
+  }
+
+  if (orderPageUrl && !isValidHttpUrl(orderPageUrl)) {
+    showStatus(`Lien Order Temu invalide pour ${title}.`, "error");
+    return null;
+  }
+
+  return {
+    ...draft,
+    title,
+    quantity: Math.floor(quantity),
+    purchasePrice,
+    productUrl: isTemuProductUrl(orderPageUrl) ? orderPageUrl : "",
+    orderPageUrl,
+    imageUrl,
+    variant: normalizeTemuVariant(draft.variant || draft.color || ""),
+    color: normalizeTemuColor(draft.color || draft.variant || ""),
+    currency: draft.currency || "EUR"
+  };
 }
 
 function importTemuItems(items) {
@@ -998,6 +1246,10 @@ function renderCurrentView() {
     renderTable();
   }
 
+  if (state.view === "add") {
+    renderImportReview();
+  }
+
   if (state.view === "detail") {
     renderDetailView();
   }
@@ -1129,6 +1381,79 @@ function renderTable() {
       `;
     })
     .join("");
+}
+
+function renderImportReview() {
+  const drafts = state.pendingTemuImport;
+  const hasDrafts = drafts.length > 0;
+  const totalQuantity = drafts.reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0)), 0);
+  const existingCount = drafts.filter((item) => Boolean(findExistingTemuProduct(item))).length;
+  const manualAddPanel = refs.addProductForm.closest(".panel");
+
+  refs.importReviewPanel.classList.toggle("hidden", !hasDrafts);
+  if (manualAddPanel) {
+    manualAddPanel.classList.toggle("hidden", hasDrafts);
+  }
+  refs.importReviewEmpty.classList.toggle("hidden", hasDrafts);
+  refs.confirmImportReviewBtn.disabled = !hasDrafts;
+  refs.clearImportReviewBtn.disabled = !hasDrafts;
+  refs.importReviewSummary.textContent = hasDrafts
+    ? `${drafts.length} article(s), ${totalQuantity} piece(s) a verifier. ${existingCount} deja present(s) seront fusionne(s).`
+    : "0 article en attente.";
+
+  refs.importReviewList.innerHTML = drafts.map((item, index) => {
+    const articleLink = item.productUrl || item.orderPageUrl || "";
+    const existingProduct = findExistingTemuProduct(item);
+    const imageCell = item.imageUrl
+      ? `<img src="${escapeHtml(item.imageUrl)}" alt="Image ${escapeHtml(item.title)}">`
+      : '<div class="no-photo large">Pas image</div>';
+
+    return `
+      <article class="import-review-card" data-draft-id="${escapeHtml(item.draftId)}">
+        <div class="import-review-media">
+          ${imageCell}
+        </div>
+        <div class="import-review-fields">
+          <label class="wide-field">
+            Produit
+            <textarea data-field="title" rows="2" required>${escapeHtml(item.title)}</textarea>
+          </label>
+          <label>
+            Quantite a ajouter
+            <input data-field="quantity" type="number" min="1" value="${Math.max(1, Number(item.quantity || 1))}">
+          </label>
+          <label>
+            Couleur
+            <input data-field="color" type="text" value="${escapeHtml(item.color || "")}" placeholder="Ex: Rose">
+          </label>
+          <label>
+            Prix achat Temu
+            <input data-field="purchasePrice" type="number" min="0" step="0.01" value="${formatNumberInputValue(item.purchasePrice)}" placeholder="Optionnel">
+          </label>
+          <label>
+            Image URL
+            <input data-field="imageUrl" type="text" value="${escapeHtml(item.imageUrl || "")}" placeholder="https://... ou data:image/...">
+          </label>
+          <label>
+            Image fichier
+            <input data-field="imageFile" type="file" accept="image/*">
+          </label>
+          <label class="wide-field">
+            Lien Order Temu
+            <input data-field="orderPageUrl" type="url" value="${escapeHtml(articleLink)}" placeholder="https://www.temu.com/...">
+          </label>
+          <div class="import-review-meta">
+            <span>#${index + 1}</span>
+            ${item.variant ? `<span>${escapeHtml(item.variant)}</span>` : ""}
+            ${existingProduct ? `<span class="merge-pill">Fusion: ${escapeHtml(existingProduct.name)}</span>` : '<span class="new-pill">Nouvel article</span>'}
+          </div>
+        </div>
+        <div class="import-review-side">
+          <button class="btn btn-danger btn-small" type="button" data-action="removeImportDraft">Retirer</button>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderDetailView() {
