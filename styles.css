@@ -344,6 +344,18 @@ code {
   margin-bottom: 1rem;
 }
 
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.section-heading h3 {
+  margin-bottom: 0;
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -595,11 +607,29 @@ th {
 
 #statusMessage {
   position: fixed;
-  top: 1rem;
+  bottom: 1rem;
   right: 1rem;
   z-index: 30;
   width: min(430px, calc(100vw - 2rem));
   box-shadow: 0 16px 40px rgba(2, 8, 23, 0.42);
+}
+
+.message-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.message-action {
+  width: auto;
+  border: 1px solid rgba(204, 251, 241, 0.5);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  background: rgba(15, 23, 42, 0.65);
+  color: #ccfbf1;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .error {

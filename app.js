@@ -61,6 +61,7 @@ const refs = {
   syncBadge: document.getElementById("syncBadge"),
   manualSyncBtn: document.getElementById("manualSyncBtn"),
   goAddBtn: document.getElementById("goAddBtn"),
+  deleteAllBtn: document.getElementById("deleteAllBtn"),
   homeView: document.getElementById("homeView"),
   addView: document.getElementById("addView"),
   detailView: document.getElementById("detailView"),
@@ -107,6 +108,9 @@ function bindEvents() {
   });
   refs.manualSyncBtn.addEventListener("click", () => {
     void manualSyncProducts();
+  });
+  refs.deleteAllBtn.addEventListener("click", () => {
+    void deleteAllProducts();
   });
   refs.addProductForm.addEventListener("submit", handleAddProduct);
   refs.temuImportFile.addEventListener("change", (event) => {
@@ -628,16 +632,59 @@ async function handleTableClick(event) {
     return;
   }
 
-  const confirmed = window.confirm(`Supprimer ${product.name} ?`);
-  if (!confirmed) {
+  await deleteProduct(productId);
+}
+
+async function deleteProduct(productId) {
+  const productIndex = state.products.findIndex((item) => item.id === productId);
+  if (productIndex === -1) {
     return;
   }
 
-  state.products = state.products.filter((item) => item.id !== productId);
+  const [deletedProduct] = state.products.splice(productIndex, 1);
   persistProductsCache();
-  await syncDeleteProduct(productId);
-  showStatus(`Produit supprime: ${product.name}.`, "info");
   render();
+
+  await syncDeleteProduct(productId);
+
+  showUndoStatus(`Produit supprime: ${deletedProduct.name}.`, "Annuler", async () => {
+    state.products.splice(Math.min(productIndex, state.products.length), 0, deletedProduct);
+    deletedProduct.updatedAt = new Date().toISOString();
+    persistProductsCache();
+    await syncUpsertProduct(deletedProduct);
+    render();
+    showStatus(`Suppression annulee: ${deletedProduct.name}.`, "info");
+  });
+}
+
+async function deleteAllProducts() {
+  if (state.products.length === 0) {
+    showStatus("Aucun article a supprimer.", "info");
+    return;
+  }
+
+  const deletedProducts = [...state.products];
+  state.products = [];
+  persistProductsCache();
+  render();
+
+  try {
+    await syncProductsSnapshot();
+  } catch (error) {
+    showStatus(error && error.message ? error.message : "Suppression globale non synchronisee.", "error");
+  }
+
+  showUndoStatus(`${deletedProducts.length} article(s) supprime(s).`, "Annuler", async () => {
+    state.products = deletedProducts;
+    persistProductsCache();
+    try {
+      await syncProductsSnapshot();
+      showStatus("Suppression globale annulee.", "info");
+    } catch (error) {
+      showStatus(error && error.message ? error.message : "Annulation non synchronisee.", "error");
+    }
+    render();
+  });
 }
 
 async function handleDetailSubmit(event) {
@@ -1914,6 +1961,28 @@ function showStatus(message, kind) {
   showStatus.timeoutId = window.setTimeout(() => {
     refs.statusMessage.classList.add("hidden");
   }, 3500);
+}
+
+function showUndoStatus(message, actionLabel, onUndo) {
+  refs.statusMessage.innerHTML = `
+    <span>${escapeHtml(message)}</span>
+    <button class="message-action" type="button">${escapeHtml(actionLabel)}</button>
+  `;
+  refs.statusMessage.className = "message info message-with-action";
+  refs.statusMessage.classList.remove("hidden");
+
+  window.clearTimeout(showStatus.timeoutId);
+
+  const button = refs.statusMessage.querySelector(".message-action");
+  button.addEventListener("click", () => {
+    window.clearTimeout(showStatus.timeoutId);
+    refs.statusMessage.classList.add("hidden");
+    void onUndo();
+  }, { once: true });
+
+  showStatus.timeoutId = window.setTimeout(() => {
+    refs.statusMessage.classList.add("hidden");
+  }, 5000);
 }
 
 async function collectImagesFromForm(formData, urlsFieldName, filesFieldName) {
