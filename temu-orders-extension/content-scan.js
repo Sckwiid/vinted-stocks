@@ -1,6 +1,7 @@
 (async () => {
   try {
-    const items = await scanTemuOrderItemsWithScroll();
+    await wait(120);
+    const items = scanTemuOrderItems();
 
     return {
       ok: true,
@@ -14,67 +15,6 @@
     };
   }
 })();
-
-async function scanTemuOrderItemsWithScroll() {
-  const originalY = window.scrollY;
-  const itemsByKey = new Map();
-  const maxScrolls = 14;
-  const step = Math.max(520, Math.floor(window.innerHeight * 0.72));
-
-  const collectVisibleItems = () => {
-    for (const item of scanTemuOrderItems()) {
-      const key = buildItemKey(item.productUrl, item);
-      if (key && !itemsByKey.has(key)) {
-        itemsByKey.set(key, item);
-      }
-    }
-  };
-
-  collectVisibleItems();
-
-  for (let index = 0; index < maxScrolls; index += 1) {
-    window.scrollBy(0, step);
-    await wait(220);
-    collectVisibleItems();
-
-    const boundary = getRecommendationBoundary();
-    if (boundary && boundary.getBoundingClientRect().top < window.innerHeight * 1.25) {
-      break;
-    }
-
-    if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8) {
-      break;
-    }
-  }
-
-  window.scrollTo(0, originalY);
-  await wait(120);
-
-  return Array.from(itemsByKey.values());
-}
-
-async function autoScrollForLazyContent() {
-  const originalY = window.scrollY;
-  const maxScrolls = 10;
-  const step = Math.max(520, Math.floor(window.innerHeight * 0.75));
-
-  for (let index = 0; index < maxScrolls; index += 1) {
-    window.scrollBy(0, step);
-    await wait(180);
-
-    const boundary = getRecommendationBoundary();
-    if (boundary && boundary.getBoundingClientRect().top < window.innerHeight * 1.25) {
-      break;
-    }
-
-    if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8) {
-      break;
-    }
-  }
-
-  window.scrollTo(0, originalY);
-  await wait(120);
-}
 
 function scanTemuOrderItems() {
   const orderCards = findOrderItemCards();
@@ -169,8 +109,7 @@ function isOrderProductCard(element) {
   const hasProductImage = Boolean(element.querySelector && Array.from(element.querySelectorAll("img")).some(isTemuProductImage));
   const hasPrice = findPurchasePrice(text) !== null;
   const hasQuantity = /[x×]\s*\d+/i.test(text);
-  const hasOrderMarker = /(vendu par|exp[eé]di[eé]|suivre la commande|voir le re[cç]u|retourner\/rembourser|ajustement des prix)/i.test(text)
-    || isOnOrderDetailPage();
+  const hasOrderMarker = /(vendu par|exp[eé]di[eé]|suivre la commande|voir le re[cç]u|retourner\/rembourser|ajustement des prix)/i.test(text);
   const isReasonableSize = text.length > 8 && text.length < 5200;
 
   return (hasPhotoLabel || hasProductImage) && hasPrice && hasQuantity && hasOrderMarker && isReasonableSize;
@@ -565,11 +504,6 @@ function isTemuProductImage(image) {
 
   return /(?:^https?:\/\/)?(?:img|aimg)\.kwcdn\.com/i.test(url)
     && !/upload_aimg\/hangyerw\/759016b3-9024-40c1-add7-bfcdd900456e/i.test(url);
-}
-
-function isOnOrderDetailPage() {
-  return /order/i.test(window.location.pathname)
-    || /parent_order_sn|order_sn|order_id/i.test(window.location.search);
 }
 
 function findOrderDate(text) {

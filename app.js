@@ -89,9 +89,9 @@ const refs = {
 void init();
 
 async function init() {
-  state.products = loadProductsFromCache();
   bindEvents();
   restoreSession();
+  state.products = state.user && state.apiToken && isApiSyncEnabled() ? [] : loadProductsFromCache();
   render();
   await setupSync();
 }
@@ -376,12 +376,10 @@ async function handleTemuImport(event) {
       return;
     }
 
+    stopApiPolling();
     const result = importTemuItems(items);
     persistProductsCache();
-
-    for (const product of result.touchedProducts) {
-      await syncUpsertProduct(product);
-    }
+    await syncProductsSnapshot();
 
     render();
     showStatus(
@@ -398,7 +396,6 @@ async function handleTemuImport(event) {
 
 function importTemuItems(items) {
   const now = new Date().toISOString();
-  const touchedProducts = [];
   let added = 0;
   let updated = 0;
 
@@ -413,7 +410,6 @@ function importTemuItems(items) {
       existingProduct.photo = existingProduct.images[0] || "";
       existingProduct.temu = buildTemuMeta(existingProduct.temu, item, now);
       existingProduct.updatedAt = now;
-      touchedProducts.push(existingProduct);
       updated += 1;
       continue;
     }
@@ -438,11 +434,10 @@ function importTemuItems(items) {
     };
 
     state.products.unshift(product);
-    touchedProducts.push(product);
     added += 1;
   }
 
-  return { added, updated, touchedProducts };
+  return { added, updated };
 }
 
 function normalizeTemuImportPayload(payload) {
@@ -1663,6 +1658,31 @@ async function manualSyncProducts() {
   }
 
   showSyncDiagnostic(getSyncNotConfiguredMessage());
+}
+
+async function syncProductsSnapshot() {
+  if (state.sync.mode !== "api") {
+    return;
+  }
+
+  try {
+    state.sync.ready = false;
+    state.sync.error = "";
+    renderSyncBadge();
+    await apiRequest("/products", {
+      method: "PUT",
+      body: { products: state.products }
+    });
+    state.sync.ready = true;
+    state.sync.error = "";
+    renderSyncBadge();
+    startApiPolling();
+  } catch {
+    state.sync.ready = false;
+    state.sync.error = "api_write_failed";
+    renderSyncBadge();
+    throw new Error(getSyncErrorMessage(state.sync.error));
+  }
 }
 
 function showSyncDiagnostic(message) {
