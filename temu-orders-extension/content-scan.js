@@ -1,7 +1,7 @@
 (async () => {
   try {
     await wait(120);
-    const items = scanTemuOrderItems();
+    const items = await scanTemuOrderItems();
 
     return {
       ok: true,
@@ -16,344 +16,237 @@
   }
 })();
 
-function scanTemuOrderItems() {
-  const orderCards = findOrderItemCards();
-  const cardItems = scanOrderCards(orderCards);
-
-  if (cardItems.length > 0) {
-    return cardItems;
-  }
-
-  const anchors = Array.from(document.querySelectorAll("a[href]"))
-    .filter((anchor) => isLikelyProductUrl(anchor.href) && !isAfterRecommendationBoundary(anchor));
+async function scanTemuOrderItems() {
+  const originalX = window.scrollX;
+  const originalY = window.scrollY;
   const itemsByKey = new Map();
 
-  for (const anchor of anchors) {
-    const productUrl = normalizeAbsoluteUrl(anchor.href);
+  try {
+    for (const position of buildScanPositions()) {
+      if (Math.abs(window.scrollY - position) > 24) {
+        window.scrollTo({ top: position, left: originalX, behavior: "auto" });
+        await wait(80);
+      }
 
-    if (!productUrl) {
+      for (const item of collectVisibleOrderItems()) {
+        if (item && item.importKey && !itemsByKey.has(item.importKey)) {
+          itemsByKey.set(item.importKey, item);
+        }
+      }
+    }
+  } finally {
+    window.scrollTo({ top: originalY, left: originalX, behavior: "auto" });
+  }
+
+  return Array.from(itemsByKey.values());
+}
+
+function buildScanPositions() {
+  const maxScroll = Math.max(
+    0,
+    document.documentElement.scrollHeight - window.innerHeight,
+    document.body.scrollHeight - window.innerHeight
+  );
+
+  if (maxScroll <= 0) {
+    return [0];
+  }
+
+  const positions = [window.scrollY, 0];
+  const steps = maxScroll < 1800 ? 3 : 6;
+
+  for (let index = 1; index <= steps; index += 1) {
+    positions.push(Math.round((maxScroll * index) / steps));
+  }
+
+  return [...new Set(positions.map((position) => Math.max(0, Math.min(maxScroll, position))))];
+}
+
+function collectVisibleOrderItems() {
+  const titleNodes = Array.from(document.querySelectorAll('[class*="_2CzqyEwl"]'));
+  const orderId = findOrderIdFromUrl();
+  const itemsByKey = new Map();
+
+  for (const titleNode of titleNodes) {
+    if (isAfterStopBoundary(titleNode)) {
       continue;
     }
 
-    const card = findProductCard(anchor);
-    if (!isCardInOrderContext(card)) {
+    const title = cleanTitle(titleNode.innerText || titleNode.textContent || "");
+    if (!title) {
       continue;
     }
 
-    const item = extractItemFromCard(anchor, card, productUrl);
-    const key = buildItemKey(productUrl, item);
+    const row = findProductRow(titleNode);
+    if (!row || isAfterStopBoundary(row)) {
+      continue;
+    }
 
-    if (item && key && !itemsByKey.has(key)) {
-      itemsByKey.set(key, item);
+    const priceElement = findScopedElementAfter(row, titleNode, '[class*="_3QXWbu8N"]', (element) => {
+      return findPurchasePrice(element.innerText || element.textContent || "") !== null;
+    });
+    const quantityElement = findScopedElementAfter(row, titleNode, '[class*="_3kmrz08e"]', (element) => {
+      return findQuantity(element.innerText || element.textContent || "") > 0;
+    });
+    const variantElement = findScopedElementAfter(row, titleNode, '[class*="_2mokkSXY"], [class*="_30Hvc4DA"]', (element) => {
+      return Boolean(cleanVariant(element.innerText || element.textContent || "", title));
+    });
+    const imageElement = findProductImage(row, titleNode);
+
+    const purchasePrice = priceElement ? findPurchasePrice(priceElement.innerText || priceElement.textContent || "") : null;
+    const quantity = quantityElement ? findQuantity(quantityElement.innerText || quantityElement.textContent || "") : findQuantity(row.innerText || row.textContent || "");
+    const variant = cleanVariant(variantElement ? variantElement.innerText || variantElement.textContent || "" : findVariantLine(row), title);
+    const color = extractColorFromVariant(variant);
+    const imageUrl = imageElement ? normalizeImageUrl(
+      imageElement.currentSrc
+        || imageElement.src
+        || imageElement.getAttribute("data-src")
+        || imageElement.getAttribute("data-original")
+        || imageElement.getAttribute("data-lazy-src")
+        || ""
+    ) : "";
+    const productUrl = findProductUrl(row);
+
+    if (!title || purchasePrice === null || !imageUrl) {
+      continue;
+    }
+
+    const item = {
+      title,
+      purchasePrice,
+      quantity,
+      imageUrl,
+      productUrl,
+      orderPageUrl: window.location.href,
+      orderId,
+      orderDate: "",
+      variant,
+      color,
+      importKey: "",
+      currency: "EUR"
+    };
+
+    item.importKey = buildItemKey(item);
+
+    if (!itemsByKey.has(item.importKey)) {
+      itemsByKey.set(item.importKey, item);
     }
   }
 
   return Array.from(itemsByKey.values());
 }
 
-function scanOrderCards(orderCards) {
-  const itemsByKey = new Map();
+function findProductRow(titleNode) {
+  let current = titleNode.parentElement;
 
-  for (const card of orderCards) {
-    const sourceElement = findPrimaryProductElement(card);
-    const productUrl = findProductUrl(card);
-    const item = extractItemFromCard(sourceElement, card, productUrl);
-    const key = buildItemKey(productUrl, item);
-
-    if (item && key && !itemsByKey.has(key)) {
-      itemsByKey.set(key, item);
+  for (let depth = 0; current && depth < 12; depth += 1) {
+    if (isAfterStopBoundary(current)) {
+      return null;
     }
-  }
 
-  return Array.from(itemsByKey.values());
-}
+    const text = cleanText(current.innerText || current.textContent || "");
+    const hasPrice = Boolean(current.querySelector('[class*="_3QXWbu8N"]')) || findPurchasePrice(text) !== null;
+    const hasQuantity = Boolean(current.querySelector('[class*="_3kmrz08e"]')) || /[x×]\s*\d+/i.test(text);
+    const hasImage = Array.from(current.querySelectorAll("img")).some(isTemuProductImage);
+    const titleCount = current.querySelectorAll('[class*="_2CzqyEwl"]').length;
+    const isReasonableSize = text.length > 8 && text.length < 2200;
 
-function findOrderItemCards() {
-  const candidates = [
-    ...Array.from(document.querySelectorAll('[class*="_2NFJ2jka"]')),
-    ...Array.from(document.querySelectorAll("img"))
-      .filter((image) => isTemuProductImage(image))
-      .map(findClosestOrderItemCard),
-    ...Array.from(document.querySelectorAll("[aria-label]"))
-      .filter((element) => isArticlePhotoLabel(element.getAttribute("aria-label")))
-      .map(findClosestOrderItemCard)
-  ];
-
-  return [...new Set(candidates)]
-    .filter((card) => card && isOrderProductCard(card));
-}
-
-function findClosestOrderItemCard(element) {
-  let current = element;
-
-  for (let depth = 0; current && depth < 7; depth += 1) {
-    if (isOrderProductCard(current)) {
+    if (hasPrice && hasQuantity && hasImage && titleCount <= 1 && isReasonableSize) {
       return current;
     }
 
     current = current.parentElement;
   }
 
-  return element.closest('[class*="_2NFJ2jka"]') || element;
+  return null;
 }
 
-function isOrderProductCard(element) {
-  if (!element || isAfterRecommendationBoundary(element)) {
-    return false;
-  }
+function findScopedElementAfter(scope, source, selector, predicate) {
+  const candidates = Array.from(scope.querySelectorAll(selector))
+    .filter((element) => !predicate || predicate(element));
 
-  const text = cleanText(element.innerText || element.textContent || "");
-  const hasPhotoLabel = Boolean(element.querySelector && Array.from(element.querySelectorAll("[aria-label]")).some((item) => {
-    return isArticlePhotoLabel(item.getAttribute("aria-label"));
-  })) || isArticlePhotoLabel(element.getAttribute && element.getAttribute("aria-label"));
-  const hasProductImage = Boolean(element.querySelector && Array.from(element.querySelectorAll("img")).some(isTemuProductImage));
-  const hasPrice = findPurchasePrice(text) !== null;
-  const hasQuantity = /[x×]\s*\d+/i.test(text);
-  const hasOrderMarker = /(vendu par|exp[eé]di[eé]|suivre la commande|voir le re[cç]u|retourner\/rembourser|ajustement des prix)/i.test(text);
-  const isReasonableSize = text.length > 8 && text.length < 5200;
-
-  return (hasPhotoLabel || hasProductImage) && hasPrice && hasQuantity && hasOrderMarker && isReasonableSize;
-}
-
-function isCardInOrderContext(card) {
-  if (!card || isAfterRecommendationBoundary(card)) {
-    return false;
-  }
-
-  const text = cleanText(card.innerText || card.textContent || "");
-  return /(vendu par|exp[eé]di[eé]|suivre la commande|voir le re[cç]u|retourner\/rembourser|ajustement des prix|[x×]\s*\d+)/i.test(text);
-}
-
-function extractItemFromCard(sourceElement, card, productUrl) {
-  const cardText = cleanText(card ? card.innerText || card.textContent : sourceElement.innerText || sourceElement.textContent);
-  const imageUrl = findImageUrl(sourceElement, card);
-  const title = findTitle(sourceElement, card, cardText, imageUrl);
-  const variant = findVariant(cardText);
-  const color = extractColorFromVariant(variant);
-  const purchasePrice = findPurchasePrice(cardText);
-  const quantity = findQuantity(cardText);
-
-  if (!title && !productUrl) {
+  if (candidates.length === 0) {
     return null;
   }
 
-  const orderInfo = findOrderInfo(card || sourceElement);
+  const following = candidates.filter((element) => {
+    return source.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING;
+  });
 
-  return {
-    title: title || "Article Temu",
-    purchasePrice,
-    quantity,
-    imageUrl,
-    productUrl,
-    orderPageUrl: window.location.href,
-    orderId: orderInfo.orderId,
-    orderDate: orderInfo.orderDate,
-    variant,
-    color,
-    importKey: buildItemKey(productUrl, {
-      title,
-      imageUrl,
-      purchasePrice,
-      quantity,
-      orderId: orderInfo.orderId,
-      variant,
-      color
-    }),
-    currency: "EUR"
-  };
+  return following[0] || candidates[0];
 }
 
-function findProductCard(anchor) {
-  let current = anchor;
-  let best = anchor;
+function findProductImage(scope, source) {
+  const candidates = Array.from(scope.querySelectorAll("img")).filter(isTemuProductImage);
 
-  for (let depth = 0; current && depth < 8; depth += 1) {
-    if (isAfterRecommendationBoundary(current)) {
-      break;
-    }
-
-    const text = cleanText(current.innerText || "");
-    const hasImage = Boolean(current.querySelector && current.querySelector("img"));
-    const hasProductLink = Boolean(current.querySelector && Array.from(current.querySelectorAll("a[href]")).some((link) => isLikelyProductUrl(link.href)));
-    const isTooLarge = text.length > 2400;
-
-    if (hasImage && hasProductLink && text.length >= 8 && !isTooLarge) {
-      best = current;
-    }
-
-    if (hasImage && hasProductLink && (findPurchasePrice(text) !== null || findQuantity(text) > 1) && !isTooLarge) {
-      return current;
-    }
-
-    current = current.parentElement;
+  if (candidates.length === 0) {
+    return null;
   }
 
-  return best;
+  const beforeTitle = candidates.filter((image) => {
+    return image.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING;
+  });
+
+  return beforeTitle[beforeTitle.length - 1] || candidates[0];
 }
 
-function findPrimaryProductElement(card) {
-  if (!card || !card.querySelector) {
-    return card;
-  }
-
-  return Array.from(card.querySelectorAll("[aria-label]")).find((element) => {
-    return isArticlePhotoLabel(element.getAttribute("aria-label"));
-  }) || card.querySelector('[class*="_2CzqyEwl"]') || card;
-}
-
-function findProductUrl(card) {
-  if (!card || !card.querySelectorAll) {
+function findProductUrl(scope) {
+  if (!scope || !scope.querySelectorAll) {
     return "";
   }
 
-  const directLink = Array.from(card.querySelectorAll("a[href]")).find((link) => {
-    return isLikelyProductUrl(link.href);
+  const link = Array.from(scope.querySelectorAll("a[href]")).find((anchor) => {
+    return isLikelyProductUrl(anchor.href);
   });
 
-  if (directLink) {
-    return normalizeAbsoluteUrl(directLink.href);
-  }
-
-  const elements = [card, ...Array.from(card.querySelectorAll("*")).slice(0, 140)];
-  const urlAttributes = ["href", "data-href", "data-url", "data-link", "data-product-url", "data-target-url"];
-
-  for (const element of elements) {
-    for (const attribute of urlAttributes) {
-      const value = element.getAttribute && element.getAttribute(attribute);
-      if (value && isLikelyProductUrl(value)) {
-        return normalizeAbsoluteUrl(value);
-      }
-    }
-  }
-
-  return "";
+  return link ? normalizeAbsoluteUrl(link.href) : "";
 }
 
-function findImageUrl(anchor, card) {
-  const imageCandidates = [
-    ...(anchor ? Array.from(anchor.querySelectorAll("img")) : []),
-    ...(card ? Array.from(card.querySelectorAll("img")) : [])
-  ];
+function findVariantLine(scope) {
+  const text = cleanText(scope.innerText || scope.textContent || "");
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
 
-  for (const image of imageCandidates) {
-    const url = normalizeImageUrl(
-      image.currentSrc
-        || image.src
-        || image.getAttribute("data-src")
-        || image.getAttribute("data-original")
-        || image.getAttribute("data-lazy-src")
-        || ""
-    );
-
-    if (url) {
-      return url;
-    }
-  }
-
-  return "";
-}
-
-function findTitle(anchor, card, cardText, imageUrl) {
-  const directCandidates = [
-    ...findTextCandidates(card, '[class*="_2CzqyEwl"]'),
-    ...findTextCandidates(card, "[data-title]"),
-    findLikelyTitleLine(cardText),
-    anchor.getAttribute("aria-label"),
-    anchor.getAttribute("title"),
-    anchor.innerText,
-    card && card.getAttribute("aria-label")
-  ];
-
-  const image = imageUrl && card ? Array.from(card.querySelectorAll("img")).find((img) => {
-    return normalizeImageUrl(img.currentSrc || img.src || "") === imageUrl;
-  }) : null;
-
-  if (image) {
-    directCandidates.push(image.getAttribute("alt"));
-  }
-
-  for (const candidate of directCandidates) {
-    const title = cleanTitle(candidate);
-    if (title) {
-      return title;
-    }
-  }
-
-  const lines = cardText
-    .split("\n")
-    .map(cleanTitle)
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length);
-
-  return lines[0] || "";
+  return lines.find((line) => looksLikeVariantLine(line)) || "";
 }
 
 function cleanTitle(value) {
-  const text = cleanText(value || "")
+  const line = cleanText(value || "")
     .replace(/^photo de l['’]article\s*/i, "")
     .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .find((line) => {
-      return line.length >= 5
-        && line.length <= 180
-        && !looksLikeUiLine(line)
-        && !looksLikePriceLine(line)
-        && !looksLikeQuantityLine(line)
-        && !looksLikeVariantLine(line);
-    });
+    .map((part) => part.trim())
+    .find(Boolean) || "";
 
-  return text || "";
+  if (line.length < 5 || line.length > 190) {
+    return "";
+  }
+
+  if (looksLikeUiLine(line) || looksLikePriceLine(line) || looksLikeQuantityLine(line) || looksLikeVariantLine(line)) {
+    return "";
+  }
+
+  return line;
 }
 
-function looksLikeUiLine(line) {
-  return /^(voir|ouvrir|details?|commande|remboursement|retour|suivi|livr[eé]e?|exp[eé]di[eé]|annuler|acheter|avis|total|sous-total|payer|recommander)$/i.test(line)
-    || /(livraison|service client|politique|conditions|coupon|credit|message|panier|vendu par|exp[eé]di[eé]|ce qui est inclus|ajustement des prix|retourner\/rembourser|donner un avis|suivre la commande|voir le re[cç]u)/i.test(line);
-}
-
-function looksLikePriceLine(line) {
-  return /(?:€|\beur\b|\btotal\b|\bprix\b)/i.test(line) && /\d/.test(line);
-}
-
-function looksLikeQuantityLine(line) {
-  return /(?:\bx\s*\d+\b|quantit[eé]|qt[eé]|pcs?|pi[eè]ces?)/i.test(line);
-}
-
-function looksLikeVariantLine(line) {
-  return /(taille de l['’]?[eé]tiquette|taille\s*:|couleur\s+|\/\s*taille|asian\s*[xsml]+)/i.test(line);
-}
-
-function findLikelyTitleLine(text) {
-  const lines = cleanText(text)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const priceIndex = lines.findIndex(looksLikePriceLine);
-  const searchLines = priceIndex > 0 ? lines.slice(0, priceIndex) : lines;
-
-  return searchLines.find((line) => cleanTitle(line)) || "";
-}
-
-function findVariant(text) {
-  const lines = cleanText(text)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const variantLine = lines.find((line) => {
-    return /(taille de l['’]?[eé]tiquette|taille\s*:|couleur\s+|\/\s*taille|asian\s*[xsml]+)/i.test(line)
-      && !looksLikePriceLine(line)
-      && !looksLikeUiLine(line);
-  });
-
-  return cleanVariant(variantLine || "");
-}
-
-function cleanVariant(value) {
-  return cleanText(value)
+function cleanVariant(value, title) {
+  const text = cleanText(value || "")
     .replace(/[【】]/g, "")
     .replace(/\s*:\s*/g, ": ")
     .replace(/\s*\/\s*/g, " / ")
     .trim();
+
+  if (!text || text.length > 140) {
+    return "";
+  }
+
+  if (title && normalizeComparableText(text).includes(normalizeComparableText(title).slice(0, 40))) {
+    return "";
+  }
+
+  if (looksLikeUiLine(text) || looksLikePriceLine(text) || looksLikeQuantityLine(text)) {
+    return "";
+  }
+
+  return text;
 }
 
 function extractColorFromVariant(variant) {
@@ -361,8 +254,7 @@ function extractColorFromVariant(variant) {
     return "";
   }
 
-  const firstPart = variant.split("/")[0].trim();
-  return firstPart
+  return variant.split("/")[0]
     .replace(/[【】]/g, "")
     .replace(/^couleur\s+/i, "")
     .replace(/^color\s+/i, "")
@@ -370,33 +262,28 @@ function extractColorFromVariant(variant) {
 }
 
 function findPurchasePrice(text) {
-  const prices = [];
+  const value = cleanText(text || "");
   const patterns = [
     /(?:€\s*)(\d+(?:[,.]\d{1,2})?)/g,
     /(\d+(?:[,.]\d{1,2})?)\s*(?:€|\beur\b)/gi
   ];
 
   for (const pattern of patterns) {
-    let match = pattern.exec(text);
+    let match = pattern.exec(value);
     while (match) {
       const price = parsePrice(match[1]);
       if (price !== null) {
-        prices.push(price);
+        return price;
       }
-      match = pattern.exec(text);
+      match = pattern.exec(value);
     }
   }
 
-  if (prices.length === 0) {
-    return null;
-  }
-
-  return prices
-    .filter((price) => price > 0)
-    .sort((a, b) => a - b)[0] ?? null;
+  return null;
 }
 
 function findQuantity(text) {
+  const value = cleanText(text || "");
   const patterns = [
     /[x×]\s*(\d+)\b/i,
     /\bqt[eé]\s*[:x]?\s*(\d+)\b/i,
@@ -405,7 +292,7 @@ function findQuantity(text) {
   ];
 
   for (const pattern of patterns) {
-    const match = text.match(pattern);
+    const match = value.match(pattern);
     if (match) {
       const quantity = Number(match[1]);
       if (Number.isFinite(quantity) && quantity > 0) {
@@ -417,79 +304,52 @@ function findQuantity(text) {
   return 1;
 }
 
-function findOrderInfo(anchor) {
-  let current = anchor;
-
-  for (let depth = 0; current && depth < 10; depth += 1) {
-    const text = cleanText(current.innerText || "");
-    const orderId = findOrderId(text);
-    const orderDate = findOrderDate(text);
-
-    if (orderId || orderDate) {
-      return { orderId, orderDate };
-    }
-
-    current = current.parentElement;
-  }
-
-  return { orderId: "", orderDate: "" };
-}
-
-function findOrderId(text) {
-  const patterns = [
-    /(?:commande|order)\s*(?:n[°o.]|id|#|:)?\s*([a-z0-9-]{6,})/i,
-    /\bpo[-\s]?([a-z0-9-]{6,})\b/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      return match[1].trim();
-    }
-  }
-
-  return "";
-}
-
-function buildItemKey(productUrl, item) {
-  const urlKey = normalizeUrlKey(productUrl);
-
-  if (urlKey) {
-    return [
-      urlKey,
-      item && (item.variant || item.color || ""),
-      item && (item.imageUrl || ""),
-      item && (item.purchasePrice === null ? "" : String(item.purchasePrice))
-    ].join("|").toLowerCase();
-  }
-
-  if (!item) {
+function findOrderIdFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    return url.searchParams.get("parent_order_sn")
+      || url.searchParams.get("order_sn")
+      || url.searchParams.get("parentOrderSn")
+      || "";
+  } catch {
     return "";
   }
-
-  return [
-    item.orderId || "",
-    item.title || "",
-    item.variant || "",
-    item.color || "",
-    item.imageUrl || "",
-    item.purchasePrice === null ? "" : String(item.purchasePrice),
-    item.quantity || 1
-  ].join("|").toLowerCase();
 }
 
-function findTextCandidates(root, selector) {
-  if (!root || !root.querySelectorAll) {
-    return [];
-  }
+function buildItemKey(item) {
+  const urlKey = normalizeUrlKey(item.productUrl);
+  const parts = urlKey
+    ? [urlKey, item.variant || item.color || "", item.imageUrl || "", item.purchasePrice === null ? "" : String(item.purchasePrice)]
+    : [
+      item.orderId || "",
+      item.title || "",
+      item.variant || "",
+      item.color || "",
+      item.imageUrl || "",
+      item.purchasePrice === null ? "" : String(item.purchasePrice),
+      item.quantity || 1
+    ];
 
-  return Array.from(root.querySelectorAll(selector))
-    .map((element) => element.getAttribute("data-title") || element.innerText || element.textContent || "")
-    .filter(Boolean);
+  return parts.map(normalizeComparableText).join("|");
 }
 
-function isArticlePhotoLabel(value) {
-  return /photo de l['’]article/i.test(String(value || ""));
+function looksLikeUiLine(line) {
+  const text = cleanText(line || "");
+
+  return /^(aper[cç]u|voir|ouvrir|details?|d[eé]tails|commande|remboursement|retour|suivi|livr[eé]e?|exp[eé]di[eé]|annuler|acheter|avis|total|sous-total|payer|recommander)$/i.test(text)
+    || /(livraison|service client|politique|conditions|coupon|cr[eé]dit|message|panier|vendu par|exp[eé]di[eé]|ce qui est inclus|ajustement des prix|retourner\/rembourser|donner un avis|suivre la commande|voir le re[cç]u|moyen de paiement|d[eé]tails de paiement)/i.test(text);
+}
+
+function looksLikePriceLine(line) {
+  return /(?:€|\beur\b|\btotal\b|\bprix\b)/i.test(line || "") && /\d/.test(line || "");
+}
+
+function looksLikeQuantityLine(line) {
+  return /(?:\bx\s*\d+\b|×\s*\d+\b|quantit[eé]|qt[eé]|pcs?|pi[eè]ces?)/i.test(line || "");
+}
+
+function looksLikeVariantLine(line) {
+  return /(taille de l['’]?[eé]tiquette|taille\s*:|couleur\s+|\/\s*taille|asian\s*[xsml]+)/i.test(line || "");
 }
 
 function isTemuProductImage(image) {
@@ -503,29 +363,13 @@ function isTemuProductImage(image) {
   );
 
   return /(?:^https?:\/\/)?(?:img|aimg)\.kwcdn\.com/i.test(url)
-    && !/upload_aimg\/hangyerw\/759016b3-9024-40c1-add7-bfcdd900456e/i.test(url);
+    && /thumbnail/i.test(url)
+    && !/upload_aimg\/hangyerw\/759016b3-9024-40c1-add7-bfcdd900456e/i.test(url)
+    && !/(icon|sprite|logo)/i.test(url);
 }
 
-function findOrderDate(text) {
-  const patterns = [
-    /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/,
-    /\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b/,
-    /\b\d{1,2}\s+(?:janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\s+\d{4}\b/i,
-    /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\b/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      return match[0].trim();
-    }
-  }
-
-  return "";
-}
-
-function isAfterRecommendationBoundary(element) {
-  const boundary = getRecommendationBoundary();
+function isAfterStopBoundary(element) {
+  const boundary = getStopBoundary();
 
   if (!boundary || !element) {
     return false;
@@ -539,40 +383,25 @@ function isAfterRecommendationBoundary(element) {
   return Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
-function getRecommendationBoundary() {
-  if (getRecommendationBoundary.cached && document.contains(getRecommendationBoundary.cached)) {
-    return getRecommendationBoundary.cached;
+function getStopBoundary() {
+  if (getStopBoundary.cached && document.contains(getStopBoundary.cached)) {
+    return getStopBoundary.cached;
   }
 
-  const selectors = [
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "[role='heading']",
-    "section",
-    "div",
-    "span"
-  ].join(",");
-  const elements = Array.from(document.querySelectorAll(selectors));
-  const boundary = elements.find((element) => {
+  const selectors = "h1,h2,h3,h4,[role='heading'],section,div,span";
+  const boundary = Array.from(document.querySelectorAll(selectors)).find((element) => {
     const text = cleanText(element.innerText || element.textContent || "");
 
     return text.length >= 4
-      && text.length <= 90
-      && isRecommendationHeading(text);
+      && text.length <= 100
+      && /^(d[eé]tails de paiement|moyen de paiement|vous aimerez aussi|articles similaires|produits recommand[eé]s|recommandations?|pour vous|s[eé]lectionn[eé] pour vous|d[eé]couvrez aussi)/i.test(text);
   }) || null;
 
   if (boundary) {
-    getRecommendationBoundary.cached = boundary;
+    getStopBoundary.cached = boundary;
   }
 
   return boundary;
-}
-
-function isRecommendationHeading(text) {
-  return /^(vous aimerez aussi|articles similaires|produits recommand[eé]s|recommandations?|pour vous|s[eé]lectionn[eé] pour vous|d[eé]couvrez aussi|les clients ont aussi|inspir[eé] de vos)/i.test(text)
-    || /(vous aimerez aussi|articles similaires|produits recommand[eé]s|recommandations pour vous|s[eé]lectionn[eé] pour vous)/i.test(text);
 }
 
 function isLikelyProductUrl(url) {
@@ -586,17 +415,14 @@ function isLikelyProductUrl(url) {
     const parsed = new URL(normalized);
     const host = parsed.hostname.toLowerCase();
     const href = parsed.href.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
 
     const isTemuHost = host === "temu.com"
       || host.endsWith(".temu.com")
       || host === "temu.fr"
       || host.endsWith(".temu.fr");
 
-    if (!isTemuHost) {
-      return false;
-    }
-
-    if (/(cart|checkout|order|orders|support|search|category|login|account)/i.test(parsed.pathname)) {
+    if (!isTemuHost || /(cart|checkout|order|orders|support|search|category|login|account)/i.test(path)) {
       return false;
     }
 
@@ -604,8 +430,7 @@ function isLikelyProductUrl(url) {
       || href.includes("product_id=")
       || href.includes("sku_id=")
       || href.includes("/goods")
-      || href.includes("/product")
-      || href.includes(".html");
+      || href.includes("/product");
   } catch {
     return false;
   }
@@ -663,6 +488,15 @@ function cleanText(value) {
     .replace(/\u00a0/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeComparableText(value) {
+  return cleanText(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 

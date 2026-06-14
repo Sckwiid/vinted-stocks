@@ -9,7 +9,7 @@ scanBtn.addEventListener("click", () => {
 
 async function scanActiveTemuTab() {
   setBusy(true);
-  setStatus("Scan en cours. L'extension fait defiler la page pour charger les images...", "info");
+  setStatus("Scan en cours. Analyse rapide de la page commande Temu...", "info");
   clearPreview();
 
   try {
