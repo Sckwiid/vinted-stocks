@@ -150,7 +150,7 @@ function collectVisibleOrderItems() {
         || imageElement.getAttribute("data-lazy-src")
         || ""
     ) : "";
-    const productUrl = findProductUrl(row);
+    const productUrl = findProductUrl(row, titleNode, imageElement);
 
     if (!title || purchasePrice === null) {
       continue;
@@ -331,16 +331,250 @@ function collectProductImageUrls() {
     .filter(Boolean);
 }
 
-function findProductUrl(scope) {
-  if (!scope || !scope.querySelectorAll) {
+function findProductUrl(scope, source, imageElement) {
+  const directUrl = findProductUrlInElements([
+    source,
+    imageElement,
+    scope,
+    ...getAncestors(source, 8),
+    ...getAncestors(imageElement, 6)
+  ]);
+
+  if (directUrl) {
+    return directUrl;
+  }
+
+  if (scope && scope.querySelectorAll) {
+    const scopedUrl = findProductUrlInElements(Array.from(scope.querySelectorAll("*")));
+    if (scopedUrl) {
+      return scopedUrl;
+    }
+  }
+
+  return findProductUrlByGeometry(scope);
+}
+
+function findProductUrlInElements(elements) {
+  const attributes = [
+    "href",
+    "data-href",
+    "data-url",
+    "data-link",
+    "data-product-url",
+    "data-target-url",
+    "data-redirect-url",
+    "data-click-url",
+    "data-jump-url",
+    "data-params",
+    "data-track",
+    "data-tracking",
+    "data-log",
+    "data-info"
+  ];
+
+  for (const element of elements.filter(Boolean)) {
+    for (const attribute of attributes) {
+      const value = element.getAttribute && element.getAttribute(attribute);
+      const url = extractProductUrlFromValue(value);
+      if (url) {
+        return url;
+      }
+    }
+
+    const htmlUrl = extractProductUrlFromValue(element.outerHTML || "");
+    if (htmlUrl) {
+      return htmlUrl;
+    }
+
+    const propUrl = extractProductUrlFromElementProperties(element);
+    if (propUrl) {
+      return propUrl;
+    }
+  }
+
+  return "";
+}
+
+function findProductUrlByGeometry(scope) {
+  if (!scope || !scope.getBoundingClientRect) {
     return "";
   }
 
-  const link = Array.from(scope.querySelectorAll("a[href]")).find((anchor) => {
-    return isLikelyProductUrl(anchor.href);
-  });
+  const scopeRect = scope.getBoundingClientRect();
+  const links = Array.from(document.querySelectorAll('a[href], [data-href], [data-url], [data-product-url], [data-target-url]'));
 
-  return link ? normalizeAbsoluteUrl(link.href) : "";
+  for (const link of links) {
+    const url = findProductUrlInElements([link]);
+    if (!url || !link.getBoundingClientRect) {
+      continue;
+    }
+
+    const rect = link.getBoundingClientRect();
+    const overlapsVertically = rect.bottom >= scopeRect.top && rect.top <= scopeRect.bottom;
+    const overlapsHorizontally = rect.right >= scopeRect.left && rect.left <= scopeRect.right;
+
+    if (overlapsVertically && overlapsHorizontally) {
+      return url;
+    }
+  }
+
+  return "";
+}
+
+function getAncestors(element, maxDepth) {
+  const ancestors = [];
+  let current = element && element.parentElement;
+
+  for (let depth = 0; current && depth < maxDepth; depth += 1) {
+    ancestors.push(current);
+    current = current.parentElement;
+  }
+
+  return ancestors;
+}
+
+function extractProductUrlFromValue(value) {
+  const text = decodeUrlishValue(value);
+
+  if (!text) {
+    return "";
+  }
+
+  const absoluteMatch = text.match(/https?:\/\/(?:www\.)?temu\.(?:com|fr)\/[^"'<>\\\s]+/i);
+  if (absoluteMatch && isLikelyProductUrl(absoluteMatch[0])) {
+    return normalizeAbsoluteUrl(cleanExtractedUrl(absoluteMatch[0]));
+  }
+
+  const relativeMatch = text.match(/(?:^|["'\s])((?:\/)?goods\.html\?[^"'<>\\\s]+|\/(?:goods|product)[^"'<>\\\s]*)/i);
+  if (relativeMatch && isLikelyProductUrl(relativeMatch[1])) {
+    return normalizeAbsoluteUrl(cleanExtractedUrl(relativeMatch[1]));
+  }
+
+  const goodsId = findParamLikeValue(text, "goods_id") || findParamLikeValue(text, "goodsId");
+  if (!goodsId) {
+    return "";
+  }
+
+  const url = new URL("/goods.html", getCurrentOrigin());
+  url.searchParams.set("goods_id", goodsId);
+
+  const parentOrderSn = findParamLikeValue(text, "parent_order_sn") || findOrderIdFromUrl();
+  const skuId = findParamLikeValue(text, "sku_id") || findParamLikeValue(text, "skuId");
+  const oakOrderSn = findParamLikeValue(text, "_oak_order_sn") || findParamLikeValue(text, "order_sn");
+
+  if (parentOrderSn) {
+    url.searchParams.set("parent_order_sn", parentOrderSn);
+  }
+
+  if (oakOrderSn) {
+    url.searchParams.set("_oak_order_sn", oakOrderSn);
+  }
+
+  if (skuId) {
+    url.searchParams.set("sku_id", skuId);
+  }
+
+  return url.href;
+}
+
+function extractProductUrlFromElementProperties(element) {
+  const reactPropKey = Object.keys(element || {}).find((key) => /^__reactProps/.test(key));
+  if (!reactPropKey) {
+    return "";
+  }
+
+  return scanObjectForProductUrl(element[reactPropKey], 0, new Set(), { count: 0 });
+}
+
+function scanObjectForProductUrl(value, depth, seen, budget) {
+  if (!value || depth > 5 || budget.count > 180) {
+    return "";
+  }
+
+  budget.count += 1;
+
+  if (typeof value === "string") {
+    return extractProductUrlFromValue(value);
+  }
+
+  if (typeof value !== "object" && typeof value !== "function") {
+    return "";
+  }
+
+  if (seen.has(value)) {
+    return "";
+  }
+
+  seen.add(value);
+
+  for (const key of Object.keys(value)) {
+    if (/fiber|stateNode|return|child|sibling|alternate/i.test(key)) {
+      continue;
+    }
+
+    const keyUrl = /url|href|link|goods|sku|product|params/i.test(key)
+      ? extractProductUrlFromValue(`${key}=${String(value[key])}`)
+      : "";
+    if (keyUrl) {
+      return keyUrl;
+    }
+
+    const nestedUrl = scanObjectForProductUrl(value[key], depth + 1, seen, budget);
+    if (nestedUrl) {
+      return nestedUrl;
+    }
+  }
+
+  return "";
+}
+
+function getCurrentOrigin() {
+  try {
+    return window.location.origin || new URL(window.location.href).origin;
+  } catch {
+    return "https://www.temu.com";
+  }
+}
+
+function decodeUrlishValue(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\u003d/g, "=")
+    .replace(/\\u002f/gi, "/")
+    .replace(/\\\//g, "/")
+    .replace(/%2F/gi, "/")
+    .replace(/%3A/gi, ":")
+    .replace(/%3F/gi, "?")
+    .replace(/%3D/gi, "=")
+    .replace(/%26/gi, "&");
+}
+
+function cleanExtractedUrl(url) {
+  return String(url || "")
+    .replace(/&quot;.*$/i, "")
+    .replace(/&#34;.*$/i, "")
+    .replace(/[,;)]+$/g, "")
+    .trim();
+}
+
+function findParamLikeValue(text, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`[?&]${escapedName}=([^&#"'<>\\s]+)`, "i"),
+    new RegExp(`"${escapedName}"\\s*:\\s*"([^"]+)"`, "i"),
+    new RegExp(`'${escapedName}'\\s*:\\s*'([^']+)'`, "i"),
+    new RegExp(`${escapedName}\\s*[:=]\\s*([a-z0-9_-]+)`, "i")
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      return cleanExtractedUrl(match[1]);
+    }
+  }
+
+  return "";
 }
 
 function findVariantLine(scope) {

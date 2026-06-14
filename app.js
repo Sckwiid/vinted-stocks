@@ -405,7 +405,7 @@ function importTemuItems(items) {
     if (existingProduct) {
       existingProduct.totalStock = Math.max(0, Number(existingProduct.totalStock || 0)) + item.quantity;
       existingProduct.purchasePrice = item.purchasePrice !== null ? item.purchasePrice : existingProduct.purchasePrice;
-      existingProduct.articleLink = item.productUrl || item.orderPageUrl || existingProduct.articleLink;
+      existingProduct.articleLink = item.productUrl || existingProduct.articleLink;
       existingProduct.images = mergeProductImages(existingProduct, item.imageUrl ? [item.imageUrl] : []);
       existingProduct.photo = existingProduct.images[0] || "";
       existingProduct.temu = buildTemuMeta(existingProduct.temu, item, now);
@@ -423,7 +423,7 @@ function importTemuItems(items) {
       listedBy: "",
       lowThreshold: DEFAULT_LOW_THRESHOLD,
       purchasePrice: item.purchasePrice,
-      articleLink: item.productUrl || item.orderPageUrl,
+      articleLink: item.productUrl || "",
       photo: images[0] || "",
       images,
       saleHistory: [],
@@ -1030,8 +1030,9 @@ function renderTable() {
         ? `<img class="product-photo" src="${escapeHtml(coverImage)}" alt="Photo ${escapeHtml(product.name)}">`
         : '<div class="no-photo">Pas photo</div>';
 
-      const articleCell = product.articleLink
-        ? `<a href="${escapeHtml(product.articleLink)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>`
+      const displayArticleLink = getDisplayArticleLink(product);
+      const articleCell = displayArticleLink
+        ? `<a href="${escapeHtml(displayArticleLink)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>`
         : "-";
 
       return `
@@ -1081,6 +1082,7 @@ function renderDetailView() {
   const activeImage = images[activeIndex] || "";
   const listedSellers = getListedSellers(product.listedBy);
   const defaultSoldBy = getDefaultSoldBy(product);
+  const displayArticleLink = getDisplayArticleLink(product);
 
   refs.detailBody.innerHTML = `
     <section class="panel page-heading">
@@ -1139,7 +1141,7 @@ function renderDetailView() {
           </label>
           <label>
             Lien Temu
-            <input name="detailArticleLink" type="url" value="${escapeHtml(product.articleLink)}" placeholder="https://www.temu.com/...">
+            <input name="detailArticleLink" type="url" value="${escapeHtml(displayArticleLink)}" placeholder="https://www.temu.com/...">
           </label>
           <label>
             Ajouter images URL
@@ -2091,6 +2093,34 @@ function isTemuProductUrl(value) {
   } catch {
     return false;
   }
+}
+
+function isTemuOrderUrl(value) {
+  if (!isValidHttpUrl(value)) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const isTemuHost = host === "temu.com"
+      || host.endsWith(".temu.com")
+      || host === "temu.fr"
+      || host.endsWith(".temu.fr");
+
+    return isTemuHost && /order|orders|bgt?_order_detail|bg_order_detail/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function getDisplayArticleLink(product) {
+  const link = String(product && product.articleLink ? product.articleLink : "").trim();
+  if (!link || isTemuOrderUrl(link)) {
+    return "";
+  }
+
+  return link;
 }
 
 function parseSalePrice(value) {
